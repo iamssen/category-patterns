@@ -275,6 +275,35 @@ main {
     color: #b9bdc2;
   }
 }
+.swatch-image,
+.swatch-details button {
+  display: block;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  &:hover:not(:disabled) {
+    background: transparent;
+  }
+}
+.swatch-image {
+  flex-shrink: 0;
+  border-radius: 6px;
+  & img {
+    display: block;
+  }
+  &:hover:not(:disabled) {
+    outline: 1px solid #b4d9a6;
+    outline-offset: 2px;
+  }
+}
+.swatch-details button {
+  border-radius: 2px;
+  &:hover:not(:disabled) {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
 .manage {
   color: #9b9fa5;
   font-size: 12px;

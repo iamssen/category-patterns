@@ -2,6 +2,9 @@
 
 Generate color palettes, preview patterns in charts, and export SVG assets.
 
+In Colors and patterns, click a category name to randomize its color and pattern,
+the swatch or HEX color for color only, or the pattern name for pattern only.
+
 Requires Node.js 22.12+.
 
 ```sh

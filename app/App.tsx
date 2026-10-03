@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type { Element } from "solid-js";
 import { emptyData, isValidName } from "./model.ts";
+import type { GenerationRequest } from "./generation.worker.ts";
 import type { Palette, PaletteData } from "./model.ts";
 import { Preview } from "./Preview.tsx";
 import { PATTERN_LABELS, randomCategories, swatchUrl } from "./svg.ts";
@@ -65,20 +66,13 @@ export function App(): Element {
       throw new Error("A palette with this name already exists.");
     return normalized;
   }
-  async function generate(existing?: Palette): Promise<void> {
-    if (busy() || !loaded()) return;
-    setError("");
+  async function generateColors(request: GenerationRequest): Promise<string[]> {
     try {
-      const nextName = existing?.name ?? checkName(name());
-      const length = existing?.categories.length ?? count();
-      if (!Number.isSafeInteger(length) || length < 1 || length > 20)
-        throw new Error("Color count must be between 1 and 20.");
-      setBusy("Generating colors and patterns…");
       worker = new Worker(new URL("generation.worker.ts", import.meta.url), {
         type: "module",
       });
       const staticWorker = worker;
-      const colors = await new Promise<string[]>((resolve, reject) => {
+      return await new Promise<string[]>((resolve, reject) => {
         staticWorker.addEventListener(
           "message",
           (event: MessageEvent<{ colors?: string[]; error?: string }>) => {
@@ -92,8 +86,24 @@ export function App(): Element {
           () => reject(new Error("Failed to start the color worker.")),
           { once: true },
         );
-        staticWorker.postMessage(length);
+        staticWorker.postMessage(request);
       });
+    } finally {
+      worker?.terminate();
+      worker = undefined;
+    }
+  }
+
+  async function generate(existing?: Palette): Promise<void> {
+    if (busy() || !loaded()) return;
+    setError("");
+    try {
+      const nextName = existing?.name ?? checkName(name());
+      const length = existing?.categories.length ?? count();
+      if (!Number.isSafeInteger(length) || length < 1 || length > 20)
+        throw new Error("Color count must be between 1 and 20.");
+      setBusy("Generating colors and patterns…");
+      const colors = await generateColors(length);
       const next: Palette = {
         id: existing?.id ?? crypto.randomUUID(),
         name: nextName,
@@ -109,8 +119,6 @@ export function App(): Element {
     } catch (error_) {
       setError(error_ instanceof Error ? error_.message : "Generation failed.");
     } finally {
-      worker?.terminate();
-      worker = undefined;
       setBusy("");
     }
   }
@@ -146,6 +154,43 @@ export function App(): Element {
         value.id === item.id ? { ...value, categories } : value,
       ),
     });
+  }
+  async function rerollCategory(index: number, mode: "both" | "color" | "pattern"): Promise<void> {
+    const item = palette();
+    if (!item || busy() || !loaded()) return;
+    const category = item.categories[index];
+    if (!category) return;
+    setError("");
+    setBusy(mode === "pattern" ? "Generating pattern…" : "Generating color…");
+    try {
+      const color =
+        mode === "pattern"
+          ? category.color
+          : (
+              await generateColors({
+                colors: item.categories.map((value) => value.color),
+                index,
+              })
+            )[index];
+      const next = mode === "color" ? { ...category, color } : randomCategories([color])[0];
+      change({
+        ...data(),
+        palettes: data().palettes.map((value) =>
+          value.id === item.id
+            ? {
+                ...value,
+                categories: value.categories.map((entry, entryIndex) =>
+                  entryIndex === index ? next : entry,
+                ),
+              }
+            : value,
+        ),
+      });
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : "Generation failed.");
+    } finally {
+      setBusy("");
+    }
   }
   async function save(): Promise<void> {
     if (busy() || !loaded()) return;
@@ -339,14 +384,40 @@ export function App(): Element {
                   <For each={current().categories}>
                     {(category, index) => (
                       <div class="swatch">
-                        <img
-                          src={swatchUrl(category, data().patternLighten)}
-                          alt={`${index() + 1}: ${PATTERN_LABELS[category.pattern]}`}
-                        />
-                        <div>
-                          <strong>Category {index() + 1}</strong>
-                          <code>{category.color}</code>
-                          <small>{PATTERN_LABELS[category.pattern]}</small>
+                        <button
+                          class="swatch-image"
+                          disabled={Boolean(busy())}
+                          aria-label={`Randomize color for Category ${index() + 1}`}
+                          title="Randomize color"
+                          onClick={() => void rerollCategory(index(), "color")}
+                        >
+                          <img src={swatchUrl(category, data().patternLighten)} alt="" />
+                        </button>
+                        <div class="swatch-details">
+                          <button
+                            disabled={Boolean(busy())}
+                            aria-label={`Randomize color and pattern for Category ${index() + 1}`}
+                            title="Randomize color and pattern"
+                            onClick={() => void rerollCategory(index(), "both")}
+                          >
+                            <strong>Category {index() + 1}</strong>
+                          </button>
+                          <button
+                            disabled={Boolean(busy())}
+                            aria-label={`Randomize color for Category ${index() + 1}`}
+                            title="Randomize color"
+                            onClick={() => void rerollCategory(index(), "color")}
+                          >
+                            <code>{category.color}</code>
+                          </button>
+                          <button
+                            disabled={Boolean(busy())}
+                            aria-label={`Randomize pattern for Category ${index() + 1}`}
+                            title="Randomize pattern"
+                            onClick={() => void rerollCategory(index(), "pattern")}
+                          >
+                            <small>{PATTERN_LABELS[category.pattern]}</small>
+                          </button>
                         </div>
                       </div>
                     )}

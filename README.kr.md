@@ -9,6 +9,8 @@ npm run build     # dist/에 Web 빌드
 npm run preview   # 빌드 미리보기
 ```
 
+Colors and patterns에서 각 이름을 누르면 색상과 패턴을, 미리보기 사각형이나 HEX 색상을 누르면 색상만, 패턴 이름을 누르면 패턴만 랜덤화합니다.
+
 로컬 파일 저장:
 
 ```sh

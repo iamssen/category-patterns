@@ -8,7 +8,7 @@ import {
   similarity,
 } from "category-colors";
 
-export function categoryColors(length: number): string[] {
+export function categoryColors(length: number, existing?: string[], target?: number): string[] {
   if (!Number.isSafeInteger(length) || length < 0) {
     throw new RangeError("Color count must be a nonnegative safe integer.");
   }
@@ -61,7 +61,19 @@ export function categoryColors(length: number): string[] {
     },
   );
 
-  const initial = prepareInitialState({ colors: [] }, config);
+  let initial = prepareInitialState({ colors: [] }, config);
+  if (existing && target !== undefined) {
+    initial = prepareInitialState(
+      {
+        colors: existing.map((color, index) => ({
+          color: index === target ? String(initial.colors[index]) : color,
+          fixedColor: index !== target,
+          fixedOrder: true,
+        })),
+      },
+      config,
+    );
+  }
   const colors = runSimulatedAnnealing(initial, config).colors.map(String);
   return colors;
 }
