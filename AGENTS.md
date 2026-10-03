@@ -2,10 +2,13 @@
 
 Single Solid 2 + Vite app. UI source lives in app/; Vite config and local server live at the root.
 
-- Save persists data only (Web: localStorage; App: configured data file).
+- Save persists project data and metadata (Web: localStorage; App: ~/category-patterns/{name}.yml).
 - Download SVGs exports a ZIP in Web; Generate SVGs writes configured directories in App.
-- config.yml is local and ignored; config.template.yml is the public example.
-- data.template.json seeds Web storage and is copied to a missing App data file at startup; preserve existing data.json (ignored by Git).
+- config.yml and data.json are legacy migration inputs; preserve original files.
+- templates/dark.json and templates/light.json seed new projects only; default uses dark.
+- Hash routes open the default editor, project list, and named editors.
+- Web project export packages saved YAML projects as projects.zip; SVG export uses current edits.
+- App SVG history tracks output paths; prevent shared or overlapping outputs and clean old managed paths on next generation.
 - Preserve the palette schema and SVG filenames/IDs. Use the same SVG generator for both connectors.
 - Use English for UI and project documentation; keep README.kr.md in Korean.
 - Keep changes and documentation concise. Do not add tests or stories unless requested.

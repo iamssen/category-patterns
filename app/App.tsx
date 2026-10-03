@@ -8,9 +8,14 @@ import { PATTERN_LABELS, randomCategories, swatchUrl } from "./svg.ts";
 
 import { createTheme, DEFAULT_BACKGROUND } from "./theme.ts";
 
+import type { Project } from "./projects.ts";
+import type { PageProps } from "./Workspace.tsx";
+
 import { connector } from "./connector.ts";
 
-export function App(): Element {
+export function App(props: PageProps & { projectName: string }): Element {
+  let project: Project | undefined;
+  let disposed = false;
   const [data, setData] = createSignal<PaletteData>(emptyData());
   const [selected, setSelected] = createSignal("");
   const [name, setName] = createSignal("scheme8");
@@ -18,6 +23,8 @@ export function App(): Element {
   const [rename, setRename] = createSignal("");
   const [busy, setBusy] = createSignal("");
   const [loaded, setLoaded] = createSignal(false);
+  const [outputsConfigured, setOutputsConfigured] = createSignal(false);
+  const missingOutputs = () => connector.appMode && loaded() && !outputsConfigured();
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [dirty, setDirty] = createSignal(false);
   const [message, setMessage] = createSignal("");
@@ -52,7 +59,10 @@ export function App(): Element {
   async function load(): Promise<void> {
     setError("");
     try {
-      const result = await connector.load();
+      project = await connector.load(props.projectName);
+      if (disposed) return;
+      const result = project.data;
+      setOutputsConfigured(project.outputs.length > 0);
       setData(result);
       setSettingsOpen(!result.backgroundConfirmed);
       if (result.palettes[0]) select(result.palettes[0]);
@@ -65,9 +75,12 @@ export function App(): Element {
     if (dirty()) event.preventDefault();
   };
   onSettled(() => {
+    const unregister = props.registerGuard({ dirty, busy: () => Boolean(busy()), save });
     void load();
     window.addEventListener("beforeunload", beforeUnload);
     return () => {
+      disposed = true;
+      unregister();
       worker?.terminate();
       window.removeEventListener("beforeunload", beforeUnload);
     };
@@ -215,29 +228,34 @@ export function App(): Element {
       setBusy("");
     }
   }
-  async function save(): Promise<void> {
-    if (busy() || !loaded() || !dirty()) return;
+  async function save(): Promise<boolean> {
+    if (busy() || !loaded() || !project) return false;
+    if (!dirty()) return true;
     setBusy("Saving…");
     setError("");
     setMessage("");
     try {
-      await connector.save(data());
+      const saved = data();
+      await connector.save({ ...project, data: saved });
+      if (data() !== saved) return false;
       setDirty(false);
       setMessage(`${data().palettes.length} palettes saved.`);
+      return true;
     } catch (error_) {
       setError(error_ instanceof Error ? error_.message : "Failed to save.");
+      return false;
     } finally {
       setBusy("");
     }
   }
 
   async function exportSVGs(): Promise<void> {
-    if (busy() || !loaded()) return;
+    if (busy() || !loaded() || missingOutputs()) return;
     setBusy(connector.exportProgress);
     setError("");
     setMessage("");
     try {
-      await connector.exportSVGs(data());
+      await connector.exportSVGs(props.projectName, data());
       setMessage(connector.exportSuccess);
     } catch (error_) {
       setError(error_ instanceof Error ? error_.message : "Failed to export SVGs.");
@@ -254,6 +272,17 @@ export function App(): Element {
           <h1>Category Patterns</h1>
           <p>Distinct colors. Subtle patterns.</p>
         </header>
+        <button
+          class="project-switch"
+          disabled={Boolean(busy())}
+          onClick={() => props.navigate("/projects")}
+        >
+          <span>
+            <small>Project</small>
+            <strong>{props.projectName}</strong>
+          </span>
+          <span aria-hidden="true">⇄</span>
+        </button>
         <form
           class="create"
           onSubmit={(event) => {
@@ -318,10 +347,22 @@ export function App(): Element {
             <button disabled={!loaded() || Boolean(busy()) || !dirty()} onClick={() => void save()}>
               Save
             </button>
-            <button disabled={!loaded() || Boolean(busy())} onClick={() => void exportSVGs()}>
+            <button
+              disabled={!loaded() || Boolean(busy()) || missingOutputs()}
+              aria-describedby={missingOutputs() ? "output-directory-warning" : undefined}
+              onClick={() => void exportSVGs()}
+            >
               {connector.exportLabel}
             </button>
           </div>
+          <Show when={missingOutputs()}>
+            <div class="output-warning" id="output-directory-warning" role="status">
+              <small>Add an output directory to generate SVGs.</small>
+              <button disabled={Boolean(busy())} onClick={() => props.navigate("/projects")}>
+                Set output directories
+              </button>
+            </div>
+          </Show>
           <small>{connector.description}</small>
         </footer>
       </aside>
@@ -566,9 +607,7 @@ export function App(): Element {
               </tr>
             </tbody>
           </table>
-          <p class="settings-footer">
-            Applies to all palettes. Save to keep these settings.
-          </p>
+          <p class="settings-footer">Applies to all palettes. Save to keep these settings.</p>
         </details>
         <Show
           when={palette()}

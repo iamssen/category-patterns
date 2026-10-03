@@ -1,11 +1,10 @@
-import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { defineConfig } from "vite";
 import type { PluginOption } from "vite";
 import solid from "@solidjs/vite-plugin";
 import { VitePWA } from "vite-plugin-pwa";
-import { parse } from "yaml";
-import { categoryPatternsServer, initializeData } from "./server.ts";
+import { categoryPatternsServer, initializeProjects } from "./server.ts";
 
 export default defineConfig(async ({ command, mode }) => {
   if (command === "build" && mode !== "web") {
@@ -45,30 +44,13 @@ export default defineConfig(async ({ command, mode }) => {
       }),
     );
   }
-  let dataPath: string | undefined;
+  let projectRoot: string | undefined;
   if (appMode) {
-    const configPath = path.resolve(import.meta.dirname, "config.yml");
-    const config = parse(await readFile(configPath, "utf8")) as unknown;
-    if (!config || typeof config !== "object") throw new Error("Invalid config.yml.");
-    const { data, outputs } = config as { data?: unknown; outputs?: unknown };
-    if (
-      typeof data !== "string" ||
-      !data.trim() ||
-      !Array.isArray(outputs) ||
-      !outputs.length ||
-      outputs.some((item) => typeof item !== "string" || !item.trim())
-    ) {
-      throw new Error("config.yml requires a data path and a nonempty outputs list.");
-    }
-    dataPath = path.resolve(path.dirname(configPath), data);
-    const outputPaths = [
-      ...new Set((outputs as string[]).map((item) => path.resolve(path.dirname(configPath), item))),
-    ];
-    if (outputPaths.some((item) => dataPath!.startsWith(`${item}${path.sep}`))) {
-      throw new Error("Keep the data file outside SVG output directories.");
-    }
-    await initializeData(dataPath, path.resolve(import.meta.dirname, "data.template.json"));
-    plugins.push(categoryPatternsServer(dataPath, outputPaths));
+    projectRoot = path.resolve(
+      process.env.CATEGORY_PATTERNS_HOME ?? path.join(homedir(), "category-patterns"),
+    );
+    await initializeProjects(projectRoot, import.meta.dirname);
+    plugins.push(categoryPatternsServer(projectRoot));
   }
   return {
     base: "./",
@@ -77,7 +59,7 @@ export default defineConfig(async ({ command, mode }) => {
       host: "127.0.0.1",
       port: 5174,
       strictPort: true,
-      watch: { ignored: dataPath ? [dataPath, `${dataPath}.svg-state.json`] : [] },
+      watch: { ignored: projectRoot ? [`${projectRoot}/**`] : [] },
     },
     build: { outDir: "dist" },
   };

@@ -1,40 +1,46 @@
 import type { Connector } from "./connector.ts";
 import { parseData } from "./model.ts";
 import type { PaletteData } from "./model.ts";
+import { parseProject } from "./projects.ts";
+import type { Project, TemplateName } from "./projects.ts";
 
-const endpoint = "/__api/category-patterns";
-
-async function request(init?: RequestInit, route = ""): Promise<unknown> {
-  const response = await fetch(`${endpoint}${route}`, init);
-  const result = (await response.json()) as { error?: string };
+const endpoint = "/__api/category-patterns/projects";
+async function request(route = "", body?: unknown): Promise<unknown> {
+  const response = await fetch(
+    `${endpoint}${route}`,
+    body === undefined
+      ? undefined
+      : {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+  );
+  const result = await response.json();
   if (!response.ok) throw new Error(result.error ?? "Request failed.");
   return result;
 }
-
 export class AppConnector implements Connector {
-  description =
-    "Save keeps data in your data file. Generate SVGs writes to configured directories.";
+  appMode = true;
+  description = "Save keeps this project in its YAML file. Generate SVGs writes current edits.";
   exportLabel = "Generate SVGs";
   exportProgress = "Generating SVGs…";
   exportSuccess = "SVGs generated in configured directories.";
-  async load(): Promise<PaletteData> {
-    return parseData(await request());
+  async list(): Promise<Project[]> {
+    const result = await request();
+    if (!Array.isArray(result)) throw new Error("Invalid project list.");
+    return result.map(parseProject);
   }
-  async save(data: PaletteData): Promise<void> {
-    await request({
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(parseData(data)),
-    });
+  async create(name: string, template: TemplateName, outputs: string[]): Promise<Project> {
+    return parseProject(await request("", { name, template, outputs }));
   }
-  async exportSVGs(data: PaletteData): Promise<void> {
-    await request(
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(parseData(data)),
-      },
-      "/svgs",
-    );
+  async load(name: string): Promise<Project> {
+    return parseProject(await request(`/${encodeURIComponent(name)}`));
+  }
+  async save(project: Project): Promise<void> {
+    await request(`/${encodeURIComponent(project.name)}`, parseProject(project));
+  }
+  async exportSVGs(name: string, data: PaletteData): Promise<void> {
+    await request(`/${encodeURIComponent(name)}/svgs`, parseData(data));
   }
 }
