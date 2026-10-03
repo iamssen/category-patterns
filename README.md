@@ -14,6 +14,17 @@ npm run build     # Static Web build in dist/
 npm run preview   # Preview the build
 ```
 
+The Web build is an installable PWA on HTTPS (or localhost). Open it once online
+to cache the app, then use it offline, including SVG ZIP export. Install from
+your browser's app menu or Add to Home Screen. Updates take effect after all app
+windows and tabs are closed and reopened; editing is never interrupted by an
+automatic reload. PWA caching is disabled in development and App mode.
+
+Direct folder output is possible with `showDirectoryPicker()` in desktop
+Chrome/Edge after the user selects and grants access to a folder. Safari/Firefox
+do not support this picker. PWA installation does not grant filesystem access;
+OPFS is private browser storage, not a project folder. Web Save currently uses ZIP.
+
 For local file output:
 
 ```sh
@@ -36,6 +47,7 @@ to this app.
 ```sh
 npm run type-check
 npm run lint
+npm run build
 ```
 
 GitHub Actions checks pull requests and deploys the Web build on pushes to main
