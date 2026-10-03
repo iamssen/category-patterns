@@ -1,10 +1,12 @@
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type { Element } from "solid-js";
-import { emptyData, isValidName } from "./model.ts";
+import { DEFAULT_GENERATION_SETTINGS, emptyData, isValidName } from "./model.ts";
 import type { GenerationRequest } from "./generation.worker.ts";
 import type { Palette, PaletteData } from "./model.ts";
 import { Preview } from "./Preview.tsx";
 import { PATTERN_LABELS, randomCategories, swatchUrl } from "./svg.ts";
+
+import { createTheme, DEFAULT_BACKGROUND } from "./theme.ts";
 
 import { connector } from "./connector.ts";
 
@@ -16,10 +18,26 @@ export function App(): Element {
   const [rename, setRename] = createSignal("");
   const [busy, setBusy] = createSignal("");
   const [loaded, setLoaded] = createSignal(false);
+  const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [dirty, setDirty] = createSignal(false);
   const [message, setMessage] = createSignal("");
   const [error, setError] = createSignal("");
   const palette = createMemo(() => data().palettes.find((item) => item.id === selected()));
+  const theme = createMemo(() => createTheme(data().background));
+  function setBackground(background: string): void {
+    change({ ...data(), background, backgroundConfirmed: true });
+  }
+  function setLightness(index: 0 | 1, input: HTMLInputElement): void {
+    const percent = input.valueAsNumber;
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) return;
+    const lightness: [number, number] = [...data().generation.lightness];
+    lightness[index] =
+      index === 0
+        ? Math.min(percent / 100, lightness[1] - 0.01)
+        : Math.max(percent / 100, lightness[0] + 0.01);
+    change({ ...data(), generation: { ...data().generation, lightness } });
+    input.value = String(Math.round(lightness[index] * 100));
+  }
   let worker: Worker | undefined;
 
   function change(next: PaletteData): void {
@@ -36,6 +54,7 @@ export function App(): Element {
     try {
       const result = await connector.load();
       setData(result);
+      setSettingsOpen(!result.backgroundConfirmed);
       if (result.palettes[0]) select(result.palettes[0]);
       setLoaded(true);
     } catch (error_) {
@@ -86,7 +105,11 @@ export function App(): Element {
           () => reject(new Error("Failed to start the color worker.")),
           { once: true },
         );
-        staticWorker.postMessage(request);
+        staticWorker.postMessage({
+          ...request,
+          background: data().background,
+          generation: data().generation,
+        });
       });
     } finally {
       worker?.terminate();
@@ -103,7 +126,7 @@ export function App(): Element {
       if (!Number.isSafeInteger(length) || length < 1 || length > 20)
         throw new Error("Color count must be between 1 and 20.");
       setBusy("Generating colors and patterns…");
-      const colors = await generateColors(length);
+      const colors = await generateColors({ count: length });
       const next: Palette = {
         id: existing?.id ?? crypto.randomUUID(),
         name: nextName,
@@ -208,7 +231,7 @@ export function App(): Element {
   }
 
   return (
-    <div class="app">
+    <div class="app" style={theme().style}>
       <aside class="sidebar">
         <header>
           <span class="eyebrow">Visual asset manager</span>
@@ -300,6 +323,237 @@ export function App(): Element {
             {busy() || message()}
           </div>
         </Show>
+        <Show when={loaded() && !data().backgroundConfirmed}>
+          <div class="background-notice" role="status">
+            <strong>Check your background first</strong>
+            <p>
+              Is this the background you want to use? Keep it, or choose a color below before
+              comparing palettes.
+            </p>
+            <button onClick={() => change({ ...data(), backgroundConfirmed: true })}>
+              Yes, use this background
+            </button>
+          </div>
+        </Show>
+        <details
+          class="settings"
+          open={settingsOpen()}
+          onToggle={(event) => setSettingsOpen(event.currentTarget.open)}
+        >
+          <summary>
+            <strong>Global settings</strong>
+            <span class="settings-values">
+              <span>Pattern {Math.round(data().patternLighten * 100)}%</span>
+              <span class="background-summary">
+                <i style={{ "background-color": data().background }} />
+                Background {data().background}
+              </span>
+              <span>
+                Lightness {Math.round(data().generation.lightness[0] * 100)}–
+                {Math.round(data().generation.lightness[1] * 100)}%
+              </span>
+              <span>Contrast priority {data().generation.contrastWeight}</span>
+            </span>
+          </summary>
+          <table>
+            <tbody>
+              <tr>
+                <th scope="row">Pattern brightness</th>
+                <td>
+                  <div class="config-content">
+                    <div class="config-control">
+                      <strong class="config-value">
+                        {Math.round(data().patternLighten * 100)}%
+                      </strong>
+                      <input
+                        aria-label="Pattern brightness"
+                        aria-describedby="brightness-hint"
+                        type="range"
+                        min="0"
+                        max="0.5"
+                        step="0.01"
+                        value={data().patternLighten}
+                        disabled={!loaded() || Boolean(busy())}
+                        onInput={(event) =>
+                          change({ ...data(), patternLighten: event.currentTarget.valueAsNumber })
+                        }
+                      />
+                    </div>
+                    <small id="brightness-hint">
+                      Amount of white mixed into the pattern color. Updates existing patterns
+                      immediately.
+                    </small>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Background</th>
+                <td>
+                  <div class="config-content">
+                    <div class="config-control background-setting">
+                      <strong class="config-value">{data().background}</strong>
+                      <input
+                        aria-label="Background"
+                        aria-describedby="background-hint"
+                        type="color"
+                        value={data().background}
+                        disabled={!loaded() || Boolean(busy())}
+                        onInput={(event) => setBackground(event.currentTarget.value)}
+                      />
+                      <button
+                        disabled={
+                          !loaded() || Boolean(busy()) || data().background === DEFAULT_BACKGROUND
+                        }
+                        onClick={() => setBackground(DEFAULT_BACKGROUND)}
+                      >
+                        Restore {DEFAULT_BACKGROUND}
+                      </button>
+                    </div>
+                    <small id="background-hint">
+                      Updates the entire UI. Existing colors stay unchanged; regenerate colors to
+                      optimize for this background.
+                    </small>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Color lightness</th>
+                <td>
+                  <div class="config-content">
+                    <fieldset
+                      class="generation-setting config-control"
+                      aria-label="Color lightness"
+                      aria-describedby="lightness-hint"
+                      disabled={!loaded() || Boolean(busy())}
+                    >
+                      <div class="lightness-values">
+                        <span>
+                          From <strong>{Math.round(data().generation.lightness[0] * 100)}%</strong>
+                        </span>
+                        <span>
+                          To <strong>{Math.round(data().generation.lightness[1] * 100)}%</strong>
+                        </span>
+                      </div>
+                      <div class="lightness-range">
+                        <div class="lightness-track" aria-hidden="true">
+                          <span
+                            style={{
+                              left: `${data().generation.lightness[0] * 100}%`,
+                              right: `${100 - data().generation.lightness[1] * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <input
+                          aria-label="Minimum color lightness"
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          aria-valuemax={Math.round(data().generation.lightness[1] * 100) - 1}
+                          aria-valuetext={`${Math.round(data().generation.lightness[0] * 100)}%`}
+                          value={Math.round(data().generation.lightness[0] * 100)}
+                          onInput={(event) => setLightness(0, event.currentTarget)}
+                        />
+                        <input
+                          aria-label="Maximum color lightness"
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          aria-valuemin={Math.round(data().generation.lightness[0] * 100) + 1}
+                          aria-valuetext={`${Math.round(data().generation.lightness[1] * 100)}%`}
+                          value={Math.round(data().generation.lightness[1] * 100)}
+                          onInput={(event) => setLightness(1, event.currentTarget)}
+                        />
+                      </div>
+
+                      <button
+                        disabled={
+                          data().generation.lightness[0] ===
+                            DEFAULT_GENERATION_SETTINGS.lightness[0] &&
+                          data().generation.lightness[1] ===
+                            DEFAULT_GENERATION_SETTINGS.lightness[1]
+                        }
+                        onClick={() =>
+                          change({
+                            ...data(),
+                            generation: {
+                              ...data().generation,
+                              lightness: DEFAULT_GENERATION_SETTINGS.lightness,
+                            },
+                          })
+                        }
+                      >
+                        Restore 55–80%
+                      </button>
+                    </fieldset>
+                    <small id="lightness-hint">
+                      Allowed lightness range for new or regenerated colors. Existing colors stay
+                      unchanged.
+                    </small>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Background contrast</th>
+                <td>
+                  <div class="config-content">
+                    <div class="config-control">
+                      <strong class="config-value">
+                        Priority {data().generation.contrastWeight}
+                      </strong>
+                      <input
+                        aria-label="Background contrast priority"
+                        aria-describedby="contrast-hint"
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        disabled={!loaded() || Boolean(busy())}
+                        value={data().generation.contrastWeight}
+                        onInput={(event) =>
+                          change({
+                            ...data(),
+                            generation: {
+                              ...data().generation,
+                              contrastWeight: event.currentTarget.valueAsNumber,
+                            },
+                          })
+                        }
+                      />
+                      <button
+                        disabled={
+                          !loaded() ||
+                          Boolean(busy()) ||
+                          data().generation.contrastWeight ===
+                            DEFAULT_GENERATION_SETTINGS.contrastWeight
+                        }
+                        onClick={() =>
+                          change({
+                            ...data(),
+                            generation: {
+                              ...data().generation,
+                              contrastWeight: DEFAULT_GENERATION_SETTINGS.contrastWeight,
+                            },
+                          })
+                        }
+                      >
+                        Restore priority 1
+                      </button>
+                    </div>
+                    <small id="contrast-hint">
+                      Higher priority favors background visibility over color separation when
+                      generating colors. 0 ignores background contrast.
+                    </small>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="settings-footer">
+            Applies to all palettes. Save all palettes to keep these settings.
+          </p>
+        </details>
         <Show
           when={palette()}
           fallback={
@@ -332,33 +586,18 @@ export function App(): Element {
                   </button>
                 </div>
               </header>
-              <section class="settings">
-                <label>
-                  Pattern brightness <strong>{Math.round(data().patternLighten * 100)}%</strong>
-                  <input
-                    aria-label="Pattern brightness"
-                    type="range"
-                    min="0"
-                    max="0.5"
-                    step="0.01"
-                    value={data().patternLighten}
-                    disabled={Boolean(busy())}
-                    onInput={(event) =>
-                      change({
-                        ...data(),
-                        patternLighten: event.currentTarget.valueAsNumber,
-                      })
-                    }
-                  />
-                </label>
-                <p>Amount of white mixed into the base color. Applies to all palettes.</p>
-              </section>
               <section class="panel">
                 <div class="panel-heading">
                   <h3>Stacked bars</h3>
                   <span>Proportional / equal width · thin bars</span>
                 </div>
-                <Preview palette={current()} lighten={data().patternLighten} chart="stack" />
+                <Preview
+                  palette={current()}
+                  lighten={data().patternLighten}
+                  text={theme().text}
+                  muted={theme().muted}
+                  chart="stack"
+                />
               </section>
               <div class="chart-grid">
                 <section class="panel">
@@ -366,13 +605,25 @@ export function App(): Element {
                     <h3>Bar chart</h3>
                     <span>Sample values</span>
                   </div>
-                  <Preview palette={current()} lighten={data().patternLighten} chart="bars" />
+                  <Preview
+                    palette={current()}
+                    lighten={data().patternLighten}
+                    text={theme().text}
+                    muted={theme().muted}
+                    chart="bars"
+                  />
                 </section>
                 <section class="panel">
                   <div class="panel-heading">
                     <h3>Donut chart</h3>
                   </div>
-                  <Preview palette={current()} lighten={data().patternLighten} chart="donut" />
+                  <Preview
+                    palette={current()}
+                    lighten={data().patternLighten}
+                    text={theme().text}
+                    muted={theme().muted}
+                    chart="donut"
+                  />
                 </section>
               </div>
               <section class="panel">

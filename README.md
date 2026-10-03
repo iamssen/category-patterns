@@ -1,5 +1,15 @@
 # Category Patterns
 
+Color lightness and Background contrast control new color generation. Defaults
+are 55–80% lightness and contrast priority 1. Global settings can be collapsed
+to a value summary; each Restore button restores only its named setting.
+Save all palettes persists these settings without changing existing colors.
+
+Choose Background in Global settings to update the entire UI. On first
+launch, confirm the default background or choose your own. Save all palettes
+persists the background and confirmation; exported SVG patterns remain unchanged.
+New color generation uses the selected background for contrast evaluation.
+
 Generate color palettes, preview patterns in charts, and export SVG assets.
 
 In Colors and patterns, click a category name to randomize its color and pattern,

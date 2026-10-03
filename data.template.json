@@ -1,5 +1,11 @@
 {
   "version": 1,
+  "background": "#26282b",
+  "backgroundConfirmed": false,
+  "generation": {
+    "lightness": [0.55, 0.8],
+    "contrastWeight": 1
+  },
   "patternLighten": 0.29,
   "palettes": [
     {

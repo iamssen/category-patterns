@@ -5,7 +5,13 @@ import { patternSvg } from "./svg.ts";
 
 type Chart = "stack" | "bars" | "donut";
 
-function chartSvg(palette: Palette, lighten: number, chart: Chart): string {
+function chartSvg(
+  palette: Palette,
+  lighten: number,
+  chart: Chart,
+  text: string,
+  muted: string,
+): string {
   const categories = palette.categories;
   const values = categories.map((_, index) => 12 + ((index * 17 + 9) % 40));
   const total = values.reduce((sum, value) => sum + value, 0);
@@ -33,17 +39,23 @@ function chartSvg(palette: Palette, lighten: number, chart: Chart): string {
       shapes += `<circle cx="120" cy="110" r="${radius}" fill="none" stroke="url(#c${index})" stroke-width="38" stroke-dasharray="${length} ${circumference - length}" stroke-dashoffset="${-offset}" transform="rotate(-90 120 110)"/>`;
       offset += length;
     }
-    shapes += `<text x="120" y="108" fill="#eeeeee" font-size="28" text-anchor="middle" font-family="sans-serif">${values.length}</text><text x="120" y="130" fill="#aaaaaa" font-size="12" text-anchor="middle" font-family="sans-serif">Category</text>`;
+    shapes += `<text x="120" y="108" fill="${text}" font-size="28" text-anchor="middle" font-family="sans-serif">${values.length}</text><text x="120" y="130" fill="${muted}" font-size="12" text-anchor="middle" font-family="sans-serif">Category</text>`;
   }
   const width = chart === "donut" ? 240 : 720;
   const height = chart === "stack" ? 120 : 220;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs>${defs}</defs>${shapes}</svg>`;
 }
 
-export function Preview(props: { palette: Palette; lighten: number; chart: Chart }): Element {
+export function Preview(props: {
+  palette: Palette;
+  lighten: number;
+  chart: Chart;
+  text: string;
+  muted: string;
+}): Element {
   const source = createMemo(
     () =>
-      `data:image/svg+xml,${encodeURIComponent(chartSvg(props.palette, props.lighten, props.chart))}`,
+      `data:image/svg+xml,${encodeURIComponent(chartSvg(props.palette, props.lighten, props.chart, props.text, props.muted))}`,
   );
   return (
     <img

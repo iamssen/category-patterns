@@ -1,5 +1,15 @@
 # Category Patterns
 
+Color lightness와 Background contrast로 새 색상 생성 조건을 조정합니다. 기본값은
+명도 55–80%, 대비 우선순위 1입니다. Global settings를 접으면 현재 값만 표시하며,
+각 Restore 버튼은 해당 항목만 표시된 값으로 복원합니다.
+Save all palettes로 설정을 저장하며 기존 색상은 변경하지 않습니다.
+
+Global settings의 Background를 선택하면 전체 UI 색상이 함께 조정됩니다.
+첫 실행에서는 기본 배경을 확인하거나 원하는 색을 선택하세요. Save all palettes로
+배경과 확인 상태를 저장합니다. 출력 SVG의 패턴은 유지되며, 새로운 색상 생성은
+선택한 배경을 기준으로 대비를 평가합니다.
+
 색상 팔레트와 SVG 패턴을 생성하고 차트로 비교하는 앱입니다. Node.js 22.12 이상이 필요합니다.
 
 ```sh

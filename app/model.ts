@@ -1,4 +1,14 @@
+import { DEFAULT_BACKGROUND } from "./theme.ts";
+
 export const DEFAULT_PATTERN_LIGHTEN = 0.12;
+export interface GenerationSettings {
+  lightness: [number, number];
+  contrastWeight: number;
+}
+export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
+  lightness: [0.55, 0.8],
+  contrastWeight: 1,
+};
 export const PATTERN_TYPES = [
   "lines",
   "dots",
@@ -24,11 +34,21 @@ export interface Palette {
 export interface PaletteData {
   version: 1;
   patternLighten: number;
+  background: string;
+  backgroundConfirmed: boolean;
+  generation: GenerationSettings;
   palettes: Palette[];
 }
 
 export function emptyData(): PaletteData {
-  return { version: 1, patternLighten: DEFAULT_PATTERN_LIGHTEN, palettes: [] };
+  return {
+    version: 1,
+    patternLighten: DEFAULT_PATTERN_LIGHTEN,
+    background: DEFAULT_BACKGROUND,
+    backgroundConfirmed: false,
+    generation: DEFAULT_GENERATION_SETTINGS,
+    palettes: [],
+  };
 }
 
 export function isValidName(name: string): boolean {
@@ -50,6 +70,23 @@ export function parseData(input: unknown): PaletteData {
   const data = object(input);
   if (data.version !== 1 || !Array.isArray(data.palettes))
     throw new Error("Unsupported palette data.");
+  if (
+    data.background !== undefined &&
+    (typeof data.background !== "string" || !/^#[\da-f]{6}$/i.test(data.background))
+  )
+    throw new Error("Invalid background HEX color.");
+  if (data.backgroundConfirmed !== undefined && typeof data.backgroundConfirmed !== "boolean")
+    throw new Error("Invalid background confirmation.");
+  let generation = DEFAULT_GENERATION_SETTINGS;
+  if (data.generation !== undefined) {
+    const settings = object(data.generation);
+    if (!Array.isArray(settings.lightness) || settings.lightness.length !== 2)
+      throw new Error("Invalid color lightness range.");
+    const min = number(settings.lightness[0], 0, 1);
+    const max = number(settings.lightness[1], 0, 1);
+    if (min >= max) throw new Error("Minimum color lightness must be below maximum.");
+    generation = { lightness: [min, max], contrastWeight: number(settings.contrastWeight, 0, 100) };
+  }
   const ids = new Set<string>();
   const names = new Set<string>();
   const palettes = data.palettes.map((value): Palette => {
@@ -86,6 +123,9 @@ export function parseData(input: unknown): PaletteData {
   });
   return {
     version: 1,
+    generation,
+    background: (data.background as string | undefined) ?? DEFAULT_BACKGROUND,
+    backgroundConfirmed: (data.backgroundConfirmed as boolean | undefined) ?? true,
     patternLighten: number(data.patternLighten, 0, 0.5),
     palettes,
   };

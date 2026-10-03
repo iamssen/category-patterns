@@ -8,7 +8,16 @@ import {
   similarity,
 } from "category-colors";
 
-export function categoryColors(length: number, existing?: string[], target?: number): string[] {
+import { DEFAULT_GENERATION_SETTINGS } from "./model.ts";
+import type { GenerationSettings } from "./model.ts";
+
+export function categoryColors(
+  length: number,
+  background: string,
+  settings: GenerationSettings = DEFAULT_GENERATION_SETTINGS,
+  existing?: string[],
+  target?: number,
+): string[] {
   if (!Number.isSafeInteger(length) || length < 0) {
     throw new RangeError("Color count must be a nonnegative safe integer.");
   }
@@ -21,11 +30,7 @@ export function categoryColors(length: number, existing?: string[], target?: num
   config.coolingRate = 0.99;
   config.colorSpace = {
     mode: "okhsl",
-    ranges: [
-      [0, 360],
-      [0.7, 1],
-      [0.55, 0.8],
-    ],
+    ranges: [[0, 360], [0.7, 1], settings.lightness],
   };
   config.evalFunctions = config.evalFunctions
     .filter(
@@ -55,8 +60,8 @@ export function categoryColors(length: number, existing?: string[], target?: num
     },
     {
       function: contrast,
-      weight: 1,
-      background: "#333333",
+      weight: settings.contrastWeight,
+      background,
       ratio: 3,
     },
   );
