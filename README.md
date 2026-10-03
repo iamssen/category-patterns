@@ -1,97 +1,197 @@
 # Category Patterns
 
-Color lightness and Background contrast control new color generation. Defaults
-are 55–80% lightness and contrast priority 1. Global settings can be collapsed
-to a value summary; each Restore button restores only its named setting.
-Save persists these settings without changing existing colors.
+Create color palettes with subtle patterns for charts and category labels.
+Compare them in bar, stacked bar, and donut previews, then export SVG assets for your project.
 
-Choose Background in Global settings to update the entire UI. On first
-launch, confirm the default background or choose your own. Save
-persists the background and confirmation; exported SVG patterns remain unchanged.
-New color generation uses the selected background for contrast evaluation.
+**[Open the Web app](https://iamssen.github.io/category-patterns/)** · [한국어](README.kr.md)
 
-Generate color palettes, preview patterns in charts, and export SVG assets.
-Save persists all palettes and settings. Download SVGs exports the current edits
-as a ZIP without saving them.
+![Dark palette with chart and pattern previews](readme/screenshot1.png)
 
-In Colors and patterns, click a category name to randomize its color and pattern,
-the swatch or HEX color for color only, or the pattern name for pattern only.
+## Create and customize
 
-Requires Node.js 22.12+.
+- Create palettes with the number of colors you need. Regenerate colors and patterns together, or patterns alone.
+- Adjust individual categories: click the category name for a new color and pattern, the swatch or HEX value for a new color, or the pattern name for a new pattern.
+- Tune pattern brightness, background color, and the lightness and contrast of newly generated colors.
+- Keep separate projects, starting from Dark or Light samples. Use the **Project** button to switch or create projects.
+
+![Global settings for pattern brightness, background, lightness, and contrast](readme/screenshot2.png)
+
+Choose a background to preview palettes for your own UI. Changing the background
+keeps existing palette colors; regenerate colors to adapt them to the new background.
+
+![Light palette with chart and pattern previews](readme/screenshot3.png)
+
+## Save and download
+
+**Save** keeps your project and settings in this browser. **Download SVGs** exports
+current edits as a ZIP, without saving the project. The ZIP contains palette SVGs
+and individual pattern SVGs for CSS backgrounds.
+
+You can install the Web app from your browser's app menu or **Add to Home Screen**.
+Open it once online, then continue editing and downloading SVGs offline.
+Updates apply after you close all app tabs and windows and reopen the app.
+
+## Use the Local App
+
+Run the app locally to generate SVG files directly into folders you choose,
+including multiple output folders. You can update your project's assets without
+extracting a ZIP each time. The Local App runs in your browser with a local server.
+
+Install [Node.js](https://nodejs.org/) 22.12 or later, then run:
 
 ```sh
+git clone https://github.com/iamssen/category-patterns.git
+cd category-patterns
 npm install
-npm run dev       # Web mode: Save to browser storage; Download SVGs as ZIP
-npm run build     # Static Web build in dist/
-npm run preview   # Preview the build
-```
-
-The Web build is an installable PWA on HTTPS (or localhost). Open it once online
-to cache the app, then use it offline, including SVG ZIP export. Install from
-your browser's app menu or Add to Home Screen. Updates take effect after all app
-windows and tabs are closed and reopened; editing is never interrupted by an
-automatic reload. PWA caching is disabled in development and App mode.
-
-Direct folder output is possible with `showDirectoryPicker()` in desktop
-Chrome/Edge after the user selects and grants access to a folder. Safari/Firefox
-do not support this picker. PWA installation does not grant filesystem access;
-OPFS is private browser storage, not a project folder. Web Download SVGs exports a ZIP.
-
-Projects open directly in the editor. The root opens the saved `default` project;
-use the Project button above the palette controls to open `/#/projects`.
-Create a named project from Dark or Light. Light uses the saved `light-sample`
-configuration; edit `templates/light.json` to change the seed for future projects.
-Template updates never replace existing projects. Hash routes also work on
-GitHub Pages, including direct links and refreshes. Unsaved changes are protected
-when switching pages or using browser Back/Forward.
-
-For local file output:
-
-```sh
 npm run dev:app
 ```
 
-App projects live in `~/category-patterns/{name}.yml`. Each YAML contains
-`version: 1`, `name`, `outputs` (a list), and `data` (the existing palette schema).
-Create projects and edit output directories on the Projects page. Enter one
-SVG directory per line; `~/` expands to your home directory and relative paths
-start at `~/category-patterns/`. Directories must not overlap between projects
-or with the project folder. Projects can start without output paths; Generate SVGs
-stays disabled with a setup notice until you add directories in Projects.
+Open the local URL printed in the terminal (normally `http://127.0.0.1:5174`).
+Keep the server running while using the app.
 
-Web **Export projects** packages all saved projects as `projects.zip`, after
-asking for output directories for each project. Extract its YAML files into
-`~/category-patterns/` without replacing existing files you need, then run the App.
-The directory choices are remembered in browser storage. This is separate from
-**Download SVGs**, which exports the current palette edits as
-`category-patterns-{project}.zip`.
+1. Open **Project** and create a project or edit its output directories.
+2. Enter one SVG output folder per line, such as `~/my-project/public/category-patterns`.
+3. Open the project and click **Generate SVGs** to write the current edits.
 
-App **Save** persists the current project YAML. **Generate SVGs** writes the
-current edits without saving them. Each project's `{name}.svg-state.json` tracks
-its generated data and resolved output directories. Changing directories takes
-effect on the next generation: previously managed SVG files are removed from old
-directories and written to the new directories. Old directories remain reserved
-until that generation succeeds. Unrelated files are preserved and conflicting
-unmanaged SVG filenames stop generation.
+**Save** stores the project in `~/category-patterns/{name}.yml`.
+**Generate SVGs** writes SVG files separately; save as well to keep your edits.
+Output folders must be separate from the project storage folder and must not
+be shared or nested between projects. Use folders dedicated to these SVG assets.
 
-On first use, old browser data is copied into `default`. App also migrates an
-existing root `config.yml` and its JSON data/output history into `default` when
-that project is missing. Original browser entries and local files are preserved.
-Otherwise, `templates/dark.json` seeds the default project. Local config.yml and
-data.json are now used only for legacy migration. For an alternate App project
-folder, set `CATEGORY_PATTERNS_HOME` before starting the server.
+To continue a Web project locally, use **Export projects** on the Web Projects
+page and enter output folders for each project. Extract the YAML files from
+`projects.zip` into `~/category-patterns/`, preserving any existing projects you need,
+then open the Local App. This exports saved projects; save your edits first.
 
-Exports include `{name}.svg` (pattern IDs `{name}-fill1`, etc.) and
-`{name}.fill1.svg`, etc. for CSS backgrounds. Renamed or removed assets are cleaned
-up when generating SVGs; unrelated files are preserved. Keep output directories dedicated
-to this app.
+## Use the SVGs in React
+
+Place the generated SVGs in your Vite project's `public/category-patterns/` folder.
+Pass the palette name and pattern index to `fill("scheme8", 2)` or
+`backgroundImage("scheme8", 2)`. This example uses `scheme8.svg` and
+`scheme8.fill2.svg`; indices start at 1.
+
+```jsx
+// CategoryPatterns.jsx
+import { createContext, useContext, useRef } from "react";
+
+const PatternContext = createContext(null);
+
+export function CategoryPatternsProvider({ children }) {
+  const container = useRef(null);
+  const requested = useRef(new Set());
+
+  async function load(scheme) {
+    if (requested.current.has(scheme)) return;
+    requested.current.add(scheme);
+    const response = await fetch(`/category-patterns/${scheme}.svg`);
+    if (!response.ok) throw new Error(`SVG request failed: ${response.status}`);
+    const source = await response.text();
+    const svg = new DOMParser().parseFromString(source, "image/svg+xml");
+    container.current?.append(document.importNode(svg.documentElement, true));
+  }
+
+  const patterns = {
+    fill(scheme, index) {
+      // Safari does not support external SVG pattern fills such as
+      // url("/category-patterns/scheme8.svg#scheme8-fill2"); inject the SVG and use a local ID.
+      load(scheme).catch(console.error);
+      return `url("#${scheme}-fill${index}")`;
+    },
+    backgroundImage: (scheme, index) =>
+      `url("/category-patterns/${scheme}.fill${index}.svg")`,
+  };
+
+  return (
+    <PatternContext.Provider value={patterns}>
+      <div ref={container} aria-hidden="true"
+        style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }} />
+      {children}
+    </PatternContext.Provider>
+  );
+}
+
+export function useCategoryPatterns() {
+  return useContext(PatternContext);
+}
+```
+Wrap your app once with the provider. `fill` loads each required palette SVG
+once and returns a local pattern reference. `backgroundImage` returns the
+individual SVG file URL.
+
+```jsx
+// App.jsx
+import { CategoryPatternsProvider, useCategoryPatterns } from "./CategoryPatterns";
+
+function Example() {
+  const { fill, backgroundImage } = useCategoryPatterns();
+
+  return (
+    <>
+      <svg width="120" height="80">
+        <rect width="120" height="80" fill={fill("scheme8", 2)} />
+      </svg>
+      <div style={{ width: 24, height: 24, backgroundImage: backgroundImage("scheme8", 2) }} />
+    </>
+  );
+}
+
+export default function App() {
+  return <CategoryPatternsProvider><Example /></CategoryPatternsProvider>;
+}
+```
+Keep the SVG container at 0×0 rather than `display: none`.
+
+<details>
+<summary>Developer notes</summary>
+
+### Development
+
+Single Solid 2 + Vite app. UI source lives in `app/`; the Vite config and local
+server live at the repository root. Both modes use the same SVG generator.
 
 ```sh
+npm run dev       # Web mode
+npm run build     # Static Web build in dist/
+npm run preview   # Preview the build
 npm run type-check
 npm run lint
-npm run build
 ```
 
-GitHub Actions checks pull requests and deploys the Web build on pushes to main
-or manual runs on main. In repository Settings → Pages, set Source to
-**GitHub Actions**. Local config.yml and data.json are not needed for deployment.
+The Web build supports PWA installation on HTTPS or localhost. PWA caching is
+disabled in development and Local App mode.
+
+### Projects and output
+
+Hash routes open the default editor, `/#/projects`, and named editors. They support
+direct links and refreshes on GitHub Pages. Page changes and browser Back/Forward
+prompt you to save, discard, or cancel when edits are unsaved.
+
+Local project YAML contains `version: 1`, `name`, `outputs` (a list), and `data`
+(the palette schema). `~/` expands to the home directory; relative output paths
+start at the project storage folder. Set `CATEGORY_PATTERNS_HOME` before starting
+the server to use another project storage folder.
+
+`templates/dark.json` and `templates/light.json` seed new projects only. Dark is
+the default. Template updates never replace existing projects.
+
+SVG output includes `{palette}.svg` with pattern IDs such as `{palette}-fill1`,
+and `{palette}.fill1.svg`, etc. for CSS backgrounds. Web SVG downloads are named
+`category-patterns-{project}.zip`.
+
+Each Local App project's `{name}.svg-state.json` tracks generated data and output
+paths. The next generation removes previously managed SVGs from old paths and
+writes the new output. Old paths remain reserved until generation succeeds.
+Unrelated files are preserved; unmanaged SVG filename conflicts stop generation.
+
+On first use, legacy browser data is copied into `default`. If the local default
+project is missing, the Local App migrates the root `config.yml`, its JSON data,
+and output history. Original entries and files are preserved. `config.yml` and
+`data.json` are legacy migration inputs only.
+
+### Deployment
+
+GitHub Actions checks pull requests and deploys the Web build on pushes to `main`
+or manual runs on `main`. In repository **Settings → Pages**, set Source to
+**GitHub Actions**. Local `config.yml` and `data.json` are not needed for deployment.
+
+</details>
