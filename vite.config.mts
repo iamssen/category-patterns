@@ -77,7 +77,7 @@ export default defineConfig(async ({ command, mode }) => {
       host: "127.0.0.1",
       port: 5174,
       strictPort: true,
-      watch: { ignored: dataPath ? [dataPath] : [] },
+      watch: { ignored: dataPath ? [dataPath, `${dataPath}.svg-state.json`] : [] },
     },
     build: { outDir: "dist" },
   };

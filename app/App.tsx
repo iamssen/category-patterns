@@ -216,15 +216,31 @@ export function App(): Element {
     }
   }
   async function save(): Promise<void> {
-    if (busy() || !loaded()) return;
+    if (busy() || !loaded() || !dirty()) return;
     setBusy("Saving…");
     setError("");
+    setMessage("");
     try {
       await connector.save(data());
       setDirty(false);
       setMessage(`${data().palettes.length} palettes saved.`);
     } catch (error_) {
       setError(error_ instanceof Error ? error_.message : "Failed to save.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function exportSVGs(): Promise<void> {
+    if (busy() || !loaded()) return;
+    setBusy(connector.exportProgress);
+    setError("");
+    setMessage("");
+    try {
+      await connector.exportSVGs(data());
+      setMessage(connector.exportSuccess);
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : "Failed to export SVGs.");
     } finally {
       setBusy("");
     }
@@ -298,14 +314,14 @@ export function App(): Element {
           </For>
         </nav>
         <footer>
-          <p>{dirty() ? "● Unsaved changes" : "Saved"}</p>
-          <button
-            class="primary"
-            disabled={!loaded() || Boolean(busy())}
-            onClick={() => void save()}
-          >
-            Save all palettes
-          </button>
+          <div class="save-actions" role="group" aria-label="Save and export palettes">
+            <button disabled={!loaded() || Boolean(busy()) || !dirty()} onClick={() => void save()}>
+              Save
+            </button>
+            <button disabled={!loaded() || Boolean(busy())} onClick={() => void exportSVGs()}>
+              {connector.exportLabel}
+            </button>
+          </div>
           <small>{connector.description}</small>
         </footer>
       </aside>
@@ -551,7 +567,7 @@ export function App(): Element {
             </tbody>
           </table>
           <p class="settings-footer">
-            Applies to all palettes. Save all palettes to keep these settings.
+            Applies to all palettes. Save to keep these settings.
           </p>
         </details>
         <Show
@@ -691,7 +707,7 @@ export function App(): Element {
                     Delete palette
                   </button>
                 </div>
-                <p>Renames and deletions are applied to SVG files when you save all palettes.</p>
+                <p>SVG exports reflect palette renames and deletions.</p>
               </details>
             </>
           )}

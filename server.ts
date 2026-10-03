@@ -48,8 +48,12 @@ async function atomicWrite(file: string, value: string): Promise<void> {
   }
 }
 
-async function saveData(data: PaletteData, dataPath: string, outputPaths: string[]): Promise<void> {
-  const previousText = await readFile(dataPath, "utf8");
+async function generateSVGs(
+  data: PaletteData,
+  statePath: string,
+  outputPaths: string[],
+): Promise<void> {
+  const previousText = await readFile(statePath, "utf8");
   const previous = parseData(JSON.parse(previousText));
   for (const outputPath of outputPaths) await mkdir(outputPath, { recursive: true });
   const files = new Map(
@@ -73,32 +77,36 @@ async function saveData(data: PaletteData, dataPath: string, outputPaths: string
   try {
     for (const [file, svg] of files) await atomicWrite(file, svg);
     for (const file of oldFiles) if (!files.has(file)) await rm(file, { force: true });
-    await atomicWrite(dataPath, `${JSON.stringify(data, null, 2)}\n`);
+    await atomicWrite(statePath, `${JSON.stringify(data, null, 2)}\n`);
   } catch (error) {
     for (const [file, contents] of backups) {
       if (contents === undefined) await rm(file, { force: true });
       else await atomicWrite(file, contents);
     }
-    await atomicWrite(dataPath, previousText);
+    await atomicWrite(statePath, previousText);
     throw error;
   }
 }
 
 export function categoryPatternsServer(dataPath: string, outputPaths: string[]): Plugin {
+  const statePath = `${dataPath}.svg-state.json`;
   let isSaving = false;
   return {
     name: "category-patterns-storage",
-    configureServer(server) {
+    async configureServer(server) {
+      // Preserve the legacy SVG baseline before independent data saves change it.
+      await initializeData(statePath, dataPath);
       server.middlewares.use("/__api/category-patterns", async (request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader("Cache-Control", "no-store");
         try {
-          if (request.url !== "/" && request.url !== "") {
+          const exporting = request.url === "/svgs";
+          if (request.url !== "/" && request.url !== "" && !exporting) {
             response.statusCode = 404;
             response.end(JSON.stringify({ error: "Unknown route." }));
             return;
           }
-          if (request.method === "GET") {
+          if (request.method === "GET" && !exporting) {
             const contents = await readFile(dataPath, "utf8");
             const data = parseData(JSON.parse(contents));
             response.end(JSON.stringify(data));
@@ -121,7 +129,7 @@ export function categoryPatternsServer(dataPath: string, outputPaths: string[]):
             response.statusCode = 409;
             response.end(
               JSON.stringify({
-                error: "A save is in progress. Please try again shortly.",
+                error: "A save or export is in progress. Please try again shortly.",
               }),
             );
             return;
@@ -129,8 +137,11 @@ export function categoryPatternsServer(dataPath: string, outputPaths: string[]):
           isSaving = true;
           try {
             const data = parseData(await readBody(request));
-            await saveData(data, dataPath, outputPaths);
-            response.end(JSON.stringify({ saved: data.palettes.length }));
+            if (exporting) await generateSVGs(data, statePath, outputPaths);
+            else await atomicWrite(dataPath, `${JSON.stringify(data, null, 2)}\n`);
+            response.end(
+              JSON.stringify({ [exporting ? "generated" : "saved"]: data.palettes.length }),
+            );
           } finally {
             isSaving = false;
           }

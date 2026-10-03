@@ -172,6 +172,34 @@ nav {
     font-size: 11px;
   }
 }
+.save-actions {
+  display: flex;
+  gap: 2px;
+  & button {
+    flex: 1;
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    border-radius: 0;
+    &:first-child {
+      border-radius: 7px 0 0 7px;
+    }
+    &:last-child {
+      border-radius: 0 7px 7px 0;
+    }
+    &:hover:not(:disabled) {
+      background: var(--accent);
+      filter: brightness(1.08);
+    }
+    &:focus-visible {
+      position: relative;
+      z-index: 1;
+    }
+  }
+}
 .primary {
   background: var(--accent);
   color: var(--on-accent);

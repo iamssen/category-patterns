@@ -8,17 +8,22 @@ import { paletteFiles } from "./svg.ts";
 const storageKey = "category-patterns:data:v1";
 
 export class WebAppConnector implements Connector {
-  description = "Save keeps data in this browser and downloads an SVG ZIP.";
+  description = "Save keeps data in this browser. Download SVGs exports a ZIP.";
+  exportLabel = "Download SVGs";
+  exportProgress = "Preparing SVG download…";
+  exportSuccess = "SVG ZIP download started.";
   async load(): Promise<PaletteData> {
     const stored = localStorage.getItem(storageKey);
     return parseData(stored === null ? initialData : JSON.parse(stored));
   }
   async save(input: PaletteData): Promise<void> {
+    localStorage.setItem(storageKey, JSON.stringify(parseData(input)));
+  }
+  async exportSVGs(input: PaletteData): Promise<void> {
     const data = parseData(input);
     const zip = new JSZip();
     for (const [name, svg] of paletteFiles(data)) zip.file(name, svg);
     const blob = await zip.generateAsync({ type: "blob" });
-    localStorage.setItem(storageKey, JSON.stringify(data));
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
