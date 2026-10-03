@@ -1,4 +1,0 @@
-# Paths are relative to this configuration file. App mode only.
-data: ./data.json
-outputs:
-  - ../my-project/public/category-patterns
