@@ -25,6 +25,7 @@ interface SVGState {
   version: 1;
   outputs: string[];
   data: PaletteData;
+  colors?: true;
 }
 async function readOptional(file: string): Promise<string | undefined> {
   try {
@@ -82,10 +83,11 @@ async function readState(root: string, name: string): Promise<SVGState | undefin
   if (
     value.version !== 1 ||
     !Array.isArray(value.outputs) ||
-    value.outputs.some((item) => typeof item !== "string" || !path.isAbsolute(item))
+    value.outputs.some((item) => typeof item !== "string" || !path.isAbsolute(item)) ||
+    (value.colors !== undefined && value.colors !== true)
   )
     throw new Error(`Invalid SVG history for ${name}.`);
-  return { version: 1, outputs: value.outputs, data: parseData(value.data) };
+  return { version: 1, outputs: value.outputs, data: parseData(value.data), colors: value.colors };
 }
 async function listProjects(root: string): Promise<Project[]> {
   const projects: Project[] = [];
@@ -199,7 +201,9 @@ async function generateSVGs(
   );
   const oldFiles = new Set(
     (previous?.outputs ?? []).flatMap((directory) =>
-      [...paletteFiles(previous!.data).keys()].map((name) => path.join(directory, name)),
+      [...paletteFiles(previous!.data).keys()]
+        .filter((name) => name !== "colors.json" || previous!.colors)
+        .map((name) => path.join(directory, name)),
     ),
   );
   const backups = new Map<string, string | undefined>();
@@ -213,7 +217,10 @@ async function generateSVGs(
   try {
     for (const [file, contents] of files) await atomicWrite(file, contents);
     for (const file of oldFiles) if (!files.has(file)) await rm(file, { force: true });
-    await atomicWrite(statePath, JSON.stringify({ version: 1, outputs, data }, null, 2));
+    await atomicWrite(
+      statePath,
+      JSON.stringify({ version: 1, outputs, data, colors: true }, null, 2),
+    );
   } catch (error) {
     for (const [file, contents] of backups) {
       if (contents === undefined) await rm(file, { force: true });

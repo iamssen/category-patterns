@@ -106,5 +106,12 @@ export function paletteFiles(data: PaletteData): Map<string, string> {
       );
     }
   }
+  const colors = Object.fromEntries(
+    data.palettes.map((palette) => [
+      palette.name,
+      palette.categories.map((category) => category.color),
+    ]),
+  );
+  files.set("colors.json", `${JSON.stringify(colors, null, 2)}\n`);
   return files;
 }

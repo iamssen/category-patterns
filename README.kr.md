@@ -65,20 +65,36 @@ SVG 에셋 전용 폴더를 사용해 주세요.
 
 ## React에서 SVG 사용하기
 
-Vite 프로젝트의 `public/category-patterns/`에 생성한 SVG 파일을 넣어 주세요.
+Vite 프로젝트의 `public/category-patterns/`에 생성한 SVG 파일과 `colors.json`을 넣어 주세요.
 `fill("scheme8", 2)` 또는 `backgroundImage("scheme8", 2)`에 팔레트 이름과
 패턴 인덱스를 전달합니다. 아래 예제는 `scheme8.svg`와 `scheme8.fill2.svg`를 사용하며,
-인덱스는 1부터 시작합니다.
+인덱스는 1부터 시작합니다. `color("scheme8", 2)`는 `fill2`의 원래 바탕색을 반환합니다.
 
 ```jsx
 // CategoryPatterns.jsx
-import { createContext, useContext, useRef } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 const PatternContext = createContext(null);
 
 export function CategoryPatternsProvider({ children }) {
   const container = useRef(null);
   const requested = useRef(new Set());
+  const [colors, setColors] = useState({});
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadColors() {
+      const response = await fetch("/category-patterns/colors.json", {
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`Colors request failed: ${response.status}`);
+      setColors(await response.json());
+    }
+    loadColors().catch((error) => {
+      if (error.name !== "AbortError") console.error(error);
+    });
+    return () => controller.abort();
+  }, []);
 
   async function load(scheme) {
     if (requested.current.has(scheme)) return;
@@ -91,6 +107,7 @@ export function CategoryPatternsProvider({ children }) {
   }
 
   const patterns = {
+    color: (scheme, index) => colors[scheme]?.[index - 1],
     fill(scheme, index) {
       // Safari does not support external SVG pattern fills such as
       // url("/category-patterns/scheme8.svg#scheme8-fill2"); inject the SVG and use a local ID.
@@ -116,18 +133,24 @@ export function useCategoryPatterns() {
 ```
 앱을 Provider로 한 번 감싸 주세요. `fill`은 필요한 팔레트 SVG를 한 번씩 불러오고
 같은 문서의 패턴 참조를 반환합니다. `backgroundImage`는 개별 SVG 파일의 URL을 반환합니다.
+`color`는 `colors.json`을 불러오기 전이나 팔레트 또는 fill이 없을 때 `undefined`를 반환합니다.
+반환된 HEX 색상의 밝기를 변형해 라인색으로 사용할 수 있습니다.
 
 ```jsx
 // App.jsx
 import { CategoryPatternsProvider, useCategoryPatterns } from "./CategoryPatterns";
 
 function Example() {
-  const { fill, backgroundImage } = useCategoryPatterns();
+  const { fill, backgroundImage, color } = useCategoryPatterns();
+  const baseColor = color("scheme8", 2);
 
   return (
     <>
       <svg width="120" height="80">
         <rect width="120" height="80" fill={fill("scheme8", 2)} />
+        {baseColor && (
+          <path d="M10 70L60 10L110 50" fill="none" stroke={baseColor} strokeWidth="3" />
+        )}
       </svg>
       <div style={{ width: 24, height: 24, backgroundImage: backgroundImage("scheme8", 2) }} />
     </>
@@ -176,10 +199,14 @@ SVG 출력은 `{palette}.svg`와 CSS 배경용 `{palette}.fill1.svg` 등입니�
 패턴 ID는 `{palette}-fill1` 형식입니다. Web SVG 다운로드 이름은
 `category-patterns-{project}.zip`입니다.
 
+두 출력 모두 `colors.json`을 포함합니다: `{ "scheme8": ["#000000", "#ffffff"] }`.
+각 팔레트의 배열에는 fill의 원래 바탕색이 순서대로 들어갑니다.
+인덱스 0은 `fill1`, 인덱스 1은 `fill2`에 대응하며, 밝기를 변형해 라인색으로 사용할 수 있습니다.
+
 Local App의 `{name}.svg-state.json`은 생성 데이터와 출력 경로를 추적합니다.
-다음 생성 시 이전 경로의 관리 SVG를 정리하고 새 경로에 출력합니다.
+다음 생성 시 이전 경로의 관리 SVG와 `colors.json`을 정리하고 새 경로에 출력합니다.
 생성이 성공하기 전까지 이전 경로도 예약됩니다. 관련 없는 파일은 보존하며,
-관리하지 않는 SVG 파일과 이름이 충돌하면 생성을 중단합니다.
+관리하지 않는 출력 파일과 이름이 충돌하면 생성을 중단합니다.
 
 최초 사용 시 기존 브라우저 데이터를 `default`로 복사합니다. 로컬 기본 프로젝트가 없으면
 Local App은 루트 `config.yml`의 JSON 데이터와 출력 이력을 이전합니다.
