@@ -122,7 +122,7 @@ export function Projects(props: PageProps): Element {
     try {
       const saved = await connector.load(project.name);
       exportProject(saved);
-      setMessage(`${saved.name}.json downloaded.`);
+      setMessage(`${saved.name}.category-patterns.svg downloaded.`);
     } catch (error_) {
       setError(error_ instanceof Error ? error_.message : "Failed to export project.");
     } finally {
@@ -191,7 +191,7 @@ export function Projects(props: PageProps): Element {
                 importInput = element;
               }}
               type="file"
-              accept=".json,application/json"
+              accept=".category-patterns.svg"
               hidden
               onChange={(event) => void importFile(event.currentTarget.files?.[0])}
             />
@@ -385,8 +385,8 @@ export function Projects(props: PageProps): Element {
         </div>
         <Show when={!connector.appMode}>
           <p class="project-storage-note">
-            Projects are saved in this browser. Export a saved project as JSON to share or back it
-            up.
+            Projects are saved in this browser. Export a saved project as SVG to preview, share, or
+            back it up.
           </p>
         </Show>
         <dialog

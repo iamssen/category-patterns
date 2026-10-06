@@ -61,9 +61,12 @@ Output folders must be separate from the project storage folder and must not
 be shared or nested between projects. Use folders dedicated to these SVG assets.
 
 Use **Export project** on a project card to download its saved data as
-`{name}.json`. Save palette edits before exporting. Use **Import project** in Web
-or Local App to load one JSON project file. Existing names receive a numeric
-suffix; imported output directories are empty so you can set your own.
+`{name}.category-patterns.svg`, with palette previews and embedded project data.
+Save palette edits before exporting. Use **Import project** in Web or Local App
+to load one `.category-patterns.svg` project file. Existing names receive a numeric
+suffix; output directories are excluded so you can set your own.
+Preview text adapts to the project background, just like the App. Share the
+original SVG file: image conversion or SVG optimization can remove project metadata.
 
 **Delete** removes a project after confirmation when there are at least two
 projects, including `default`. The last project is kept.

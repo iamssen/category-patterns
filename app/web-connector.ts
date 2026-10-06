@@ -11,6 +11,7 @@ import {
 } from "./projects.ts";
 import type { Project, TemplateName } from "./projects.ts";
 import { paletteFiles } from "./svg.ts";
+import { projectSvg, parseProjectSvg } from "./project-svg.ts";
 
 const storageKey = "category-patterns:projects:v1";
 const legacyKey = "category-patterns:data:v1";
@@ -33,14 +34,15 @@ export async function downloadZip(zip: JSZip, name: string): Promise<void> {
 export function exportProject(input: Project): void {
   const project = parseProject(input);
   downloadBlob(
-    new Blob([JSON.stringify(project, null, 2) + "\n"], { type: "application/json" }),
-    `${project.name}.json`,
+    new Blob([projectSvg(project)], { type: "image/svg+xml" }),
+    `${project.name}.category-patterns.svg`,
   );
 }
 export async function readProjectFile(file: File): Promise<Project> {
-  if (!/\.json$/i.test(file.name)) throw new Error("Choose a JSON project file.");
+  if (!/\.category-patterns\.svg$/i.test(file.name))
+    throw new Error("Choose a .category-patterns.svg project file.");
   if (file.size > 1_000_000) throw new Error("Project data is too large.");
-  return parseProject(JSON.parse(await file.text()));
+  return parseProjectSvg(await file.text());
 }
 export class WebAppConnector implements Connector {
   appMode = false;
