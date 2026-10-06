@@ -327,6 +327,10 @@ main {
   border-radius: 10px;
   margin-bottom: 24px;
   overflow: hidden;
+  & .settings-note {
+    padding: 0 22px 14px;
+    font-size: 12px;
+  }
   & summary {
     display: flex;
     align-items: center;

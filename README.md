@@ -14,10 +14,10 @@ Compare them in bar, stacked bar, and donut previews, then export SVG assets for
 - Click a swatch, HEX value, or pattern name to edit its color, pattern, angle, spacing, and thickness in a floating panel with instant previews. Choose patterns from preview buttons and adjust angle, spacing, and thickness with sliders. Randomize colors or patterns from the panel. Move colors left or right, copy HEX values, or enter exact pattern values.
 - Undo and redo edits, regeneration, reordering, and deletions with the buttons or ⌘/Ctrl Z and ⌘/Ctrl Shift Z. History lasts until you leave the editor; text fields keep their normal undo behavior.
 - Tune pattern brightness, background color, and the lightness and contrast of newly generated colors.
-- Set minimum and maximum pattern spacing and thickness in Global settings to constrain randomized patterns. Equal bounds fix a value; existing patterns stay unchanged.
-- Keep separate projects with Dark or Light settings. Uncheck **Include palettes** to start empty. Use the **Project** button to switch or create projects. The last selected palette and Global settings visibility are remembered for this browser session.
+- Set minimum and maximum pattern spacing and thickness in Project settings to constrain randomized patterns. Equal bounds fix a value; existing patterns stay unchanged.
+- Keep separate projects with Dark or Light settings. Uncheck **Include palettes** to start empty. Use the **Project** button to switch or create projects. The last selected palette and Project settings visibility are remembered for this browser session.
 
-![Global settings for pattern brightness, background, lightness, and contrast](readme/screenshot2.png)
+![Project settings for pattern brightness, background, lightness, and contrast](readme/screenshot2.png)
 
 Choose a background to preview palettes for your own UI. Changing the background
 keeps existing palette colors; regenerate colors to adapt them to the new background.

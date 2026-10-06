@@ -1144,7 +1144,7 @@ export function App(props: PageProps & { projectName: string }): Element {
           }}
         >
           <summary>
-            <strong>Global settings</strong>
+            <strong>Project settings</strong>
             <span class="settings-values">
               <span>Pattern {Math.round(data().patternLighten * 100)}%</span>
               <span class="background-summary">
@@ -1166,6 +1166,7 @@ export function App(props: PageProps & { projectName: string }): Element {
               </span>
             </span>
           </summary>
+          <p class="settings-note">Settings are saved with this project.</p>
           <table>
             <tbody>
               <tr>
