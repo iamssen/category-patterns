@@ -17,7 +17,13 @@ import { parse, stringify } from "yaml";
 import type { Plugin } from "vite";
 import { parseData } from "./app/model.ts";
 import type { PaletteData } from "./app/model.ts";
-import { checkProjectName, parseProject, projectName, templateData } from "./app/projects.ts";
+import {
+  checkProjectName,
+  parseProject,
+  projectName,
+  prepareImport,
+  templateData,
+} from "./app/projects.ts";
 import type { Project, TemplateName } from "./app/projects.ts";
 import { paletteFiles } from "./app/svg.ts";
 
@@ -119,6 +125,16 @@ async function validateOutputs(
     if (outputs.slice(index + 1).some((item) => overlaps(item, outputs[index])))
       throw new Error("Output directories must not overlap.");
   }
+  const orphanNames = (await readdir(root))
+    .filter((file) => file.endsWith(".svg-state.json"))
+    .map((file) => file.slice(0, -".svg-state.json".length))
+    .filter((name) => !projects.some((item) => item.name === name));
+  for (const name of orphanNames) {
+    const history = await readState(root, name);
+    const reserved = await Promise.all((history?.outputs ?? []).map(canonicalPath));
+    if (outputs.some((item) => reserved.some((directory) => overlaps(item, directory))))
+      throw new Error(`An output directory contains SVGs from deleted project ${name}.`);
+  }
   for (const other of projects) {
     if (other.name === project.name) continue;
     const history = await readState(root, other.name);
@@ -141,6 +157,7 @@ export async function initializeProjects(root: string, legacyRoot: string): Prom
       throw new Error("The default project must be named default.");
     return;
   }
+  if (projects.length) return;
   let project: Project = { version: 1, name: "default", outputs: [], data: templateData("dark") };
   let history: SVGState | undefined;
   const configText = await readOptional(path.join(legacyRoot, "config.yml"));
@@ -256,7 +273,10 @@ export function categoryPatternsServer(root: string): Plugin {
             .split("/")
             .filter(Boolean)
             .map(decodeURIComponent);
-          if (segments.length > 2 || (segments.length === 2 && segments[1] !== "svgs")) {
+          if (
+            segments.length > 2 ||
+            (segments.length === 2 && !["svgs", "delete"].includes(segments[1]))
+          ) {
             response.statusCode = 404;
             response.end(JSON.stringify({ error: "Unknown route." }));
             return;
@@ -300,18 +320,41 @@ export function categoryPatternsServer(root: string): Plugin {
             const body = await readBody(request);
             projects = await listProjects(root);
             project = projects.find((item) => item.name === name);
-            if (!name) {
-              const input = body as { name: string; template: TemplateName; outputs: string[] };
+            if (!name && body && typeof body === "object" && "project" in body) {
+              const historyNames = (await readdir(root))
+                .filter((file) => file.endsWith(".svg-state.json"))
+                .map((file) => ({ name: file.slice(0, -".svg-state.json".length) }));
+              const imported = prepareImport((body as { project: unknown }).project, [
+                ...projects,
+                ...historyNames,
+              ]);
+              await createFile(path.join(root, `${imported.name}.yml`), stringify(imported));
+              response.end(JSON.stringify(imported));
+            } else if (!name) {
+              const input = body as {
+                name: string;
+                template: TemplateName;
+                outputs: string[];
+                includePalettes?: boolean;
+              };
               const next = parseProject({
                 version: 1,
                 name: projectName(input.name),
                 outputs: input.outputs,
-                data: templateData(input.template),
+                data: templateData(input.template, input.includePalettes !== false),
               });
               checkProjectName(next.name, projects);
+              if (await readState(root, next.name))
+                throw new Error("This name has SVG history. Choose another project name.");
               await validateOutputs(root, next, projects);
               await createFile(path.join(root, `${next.name}.yml`), stringify(next));
               response.end(JSON.stringify(next));
+            } else if (segments[1] === "delete") {
+              if (!project) throw new Error("Project not found.");
+              if (projects.length < 2) throw new Error("Keep at least one project.");
+              await rm(path.join(root, `${name}.yml`));
+              // Keep generation history so these output paths remain reserved.
+              response.end(JSON.stringify({ deleted: true }));
             } else if (segments.length === 2) {
               const outputs = await validateOutputs(root, project!, projects);
               await generateSVGs(root, project!, parseData(body), outputs);

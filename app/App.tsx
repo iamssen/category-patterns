@@ -15,6 +15,7 @@ import { connector } from "./connector.ts";
 
 export function App(props: PageProps & { projectName: string }): Element {
   let project: Project | undefined;
+  const [activeProjectName, setActiveProjectName] = createSignal(props.projectName);
   let disposed = false;
   const [data, setData] = createSignal<PaletteData>(emptyData());
   const [selected, setSelected] = createSignal("");
@@ -86,8 +87,14 @@ export function App(props: PageProps & { projectName: string }): Element {
   async function load(): Promise<void> {
     setError("");
     try {
-      project = await connector.load(props.projectName);
+      if (props.projectName) project = await connector.load(props.projectName);
+      else {
+        const projects = await connector.list();
+        project = projects.find((item) => item.name === "default") ?? projects[0];
+        if (!project) throw new Error("Project not found.");
+      }
       if (disposed) return;
+      setActiveProjectName(project.name);
       const result = project.data;
       setOutputsConfigured(project.outputs.length > 0);
       setData(result);
@@ -400,7 +407,7 @@ export function App(props: PageProps & { projectName: string }): Element {
     setError("");
     setMessage("");
     try {
-      await connector.exportSVGs(props.projectName, data());
+      await connector.exportSVGs(activeProjectName(), data());
       setMessage(connector.exportSuccess);
     } catch (error_) {
       setError(error_ instanceof Error ? error_.message : "Failed to export SVGs.");
@@ -444,7 +451,7 @@ export function App(props: PageProps & { projectName: string }): Element {
         >
           <span>
             <small>Project</small>
-            <strong>{props.projectName}</strong>
+            <strong>{activeProjectName()}</strong>
           </span>
           <span aria-hidden="true">⇄</span>
         </button>

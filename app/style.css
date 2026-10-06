@@ -1091,3 +1091,22 @@ textarea:focus-visible {
     font-size: 11px;
   }
 }
+
+.include-palettes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.include-palettes input {
+  width: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.project-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+.project-card-actions button {
+  font-size: 12px;
+}

@@ -14,7 +14,7 @@ Compare them in bar, stacked bar, and donut previews, then export SVG assets for
 - Click a swatch, HEX value, or pattern name to edit its color, pattern, angle, spacing, and thickness in a floating panel with instant previews. Choose patterns from preview buttons and adjust angle, spacing, and thickness with sliders. Randomize colors or patterns from the panel, or click the category name to randomize both.
 - Tune pattern brightness, background color, and the lightness and contrast of newly generated colors.
 - Set minimum and maximum pattern spacing and thickness in Global settings to constrain randomized patterns. Equal bounds fix a value; existing patterns stay unchanged.
-- Keep separate projects, starting from Dark or Light samples. Use the **Project** button to switch or create projects.
+- Keep separate projects with Dark or Light settings. Uncheck **Include palettes** to start empty. Use the **Project** button to switch or create projects.
 
 ![Global settings for pattern brightness, background, lightness, and contrast](readme/screenshot2.png)
 
@@ -60,10 +60,15 @@ Keep the server running while using the app.
 Output folders must be separate from the project storage folder and must not
 be shared or nested between projects. Use folders dedicated to these SVG assets.
 
-To continue a Web project locally, use **Export projects** on the Web Projects
-page and enter output folders for each project. Extract the YAML files from
-`projects.zip` into `~/category-patterns/`, preserving any existing projects you need,
-then open the Local App. This exports saved projects; save your edits first.
+Use **Export project** on a project card to download its saved data as
+`{name}.json`. Save palette edits before exporting. Use **Import project** in Web
+or Local App to load one JSON project file. Existing names receive a numeric
+suffix; imported output directories are empty so you can set your own.
+
+**Delete** removes a project after confirmation when there are at least two
+projects, including `default`. The last project is kept.
+In Local App, generated SVGs and their history remain, reserving their output
+folders. Use a different name and output folder for a new project.
 
 ## Use the SVGs in React
 
@@ -189,7 +194,8 @@ disabled in development and Local App mode.
 
 ### Projects and output
 
-Hash routes open the default editor, `/#/projects`, and named editors. They support
+The home address opens `default` when available, or the first remaining project.
+Hash routes open the editor, `/#/projects`, and named editors. They support
 direct links and refreshes on GitHub Pages. Page changes and browser Back/Forward
 prompt you to save, discard, or cancel when edits are unsaved.
 
@@ -214,8 +220,8 @@ paths. The next generation removes previously managed SVGs and `colors.json` fro
 writes the new output. Old paths remain reserved until generation succeeds.
 Unrelated files are preserved; unmanaged output filename conflicts stop generation.
 
-On first use, legacy browser data is copied into `default`. If the local default
-project is missing, the Local App migrates the root `config.yml`, its JSON data,
+On first use, legacy browser data is copied into `default`. If there are no local
+projects, the Local App migrates the root `config.yml`, its JSON data,
 and output history. Original entries and files are preserved. `config.yml` and
 `data.json` are legacy migration inputs only.
 

@@ -31,8 +31,19 @@ export class AppConnector implements Connector {
     if (!Array.isArray(result)) throw new Error("Invalid project list.");
     return result.map(parseProject);
   }
-  async create(name: string, template: TemplateName, outputs: string[]): Promise<Project> {
-    return parseProject(await request("", { name, template, outputs }));
+  async create(
+    name: string,
+    template: TemplateName,
+    outputs: string[],
+    includePalettes = true,
+  ): Promise<Project> {
+    return parseProject(await request("", { name, template, outputs, includePalettes }));
+  }
+  async importProject(project: Project): Promise<Project> {
+    return parseProject(await request("", { project: parseProject(project) }));
+  }
+  async delete(name: string): Promise<void> {
+    await request(`/${encodeURIComponent(name)}/delete`, {});
   }
   async load(name: string): Promise<Project> {
     return parseProject(await request(`/${encodeURIComponent(name)}`));

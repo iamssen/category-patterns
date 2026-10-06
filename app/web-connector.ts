@@ -1,16 +1,20 @@
 import JSZip from "jszip";
-import { stringify } from "yaml";
 import type { Connector } from "./connector.ts";
 import { parseData } from "./model.ts";
 import type { PaletteData } from "./model.ts";
-import { checkProjectName, parseProject, projectName, templateData } from "./projects.ts";
+import {
+  checkProjectName,
+  parseProject,
+  projectName,
+  prepareImport,
+  templateData,
+} from "./projects.ts";
 import type { Project, TemplateName } from "./projects.ts";
 import { paletteFiles } from "./svg.ts";
 
 const storageKey = "category-patterns:projects:v1";
 const legacyKey = "category-patterns:data:v1";
-export async function downloadZip(zip: JSZip, name: string): Promise<void> {
-  const blob = await zip.generateAsync({ type: "blob" });
+function downloadBlob(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -23,47 +27,20 @@ export async function downloadZip(zip: JSZip, name: string): Promise<void> {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 }
-function exportPath(input: string): string {
-  const source = input.startsWith("/")
-    ? input
-    : input === "~" || input.startsWith("~/")
-      ? `@home/${input.slice(2)}`
-      : `@home/category-patterns/${input}`;
-  const parts: string[] = [];
-  for (const part of source.split("/")) {
-    if (!part || part === ".") continue;
-    if (part === "..") parts.pop();
-    else parts.push(part);
-  }
-  return `${source.startsWith("/") ? "/" : ""}${parts.join("/")}`;
+export async function downloadZip(zip: JSZip, name: string): Promise<void> {
+  downloadBlob(await zip.generateAsync({ type: "blob" }), name);
 }
-function checkExportOutputs(projects: Project[]): void {
-  const assigned: { name: string; path: string }[] = [];
-  const overlaps = (a: string, b: string) =>
-    a === b || a.startsWith(`${b.replace(/\/$/, "")}/`) || b.startsWith(`${a.replace(/\/$/, "")}/`);
-  for (const project of projects) {
-    const paths = [...new Set(project.outputs.map(exportPath))];
-    for (const path of paths) {
-      if (overlaps(path, "@home/category-patterns"))
-        throw new Error(
-          `Keep output directories for ${project.name} separate from ~/category-patterns/.`,
-        );
-      const conflict = assigned.find((item) => overlaps(path, item.path));
-      if (conflict)
-        throw new Error(`Output directories for ${project.name} overlap with ${conflict.name}.`);
-      assigned.push({ name: project.name, path });
-    }
-  }
+export function exportProject(input: Project): void {
+  const project = parseProject(input);
+  downloadBlob(
+    new Blob([JSON.stringify(project, null, 2) + "\n"], { type: "application/json" }),
+    `${project.name}.json`,
+  );
 }
-export async function exportProjects(projects: Project[]): Promise<void> {
-  checkExportOutputs(projects);
-  const zip = new JSZip();
-  for (const input of projects) {
-    const project = parseProject(input);
-    if (!project.outputs.length) throw new Error(`Add an output directory for ${project.name}.`);
-    zip.file(`${project.name}.yml`, stringify(project));
-  }
-  await downloadZip(zip, "projects.zip");
+export async function readProjectFile(file: File): Promise<Project> {
+  if (!/\.json$/i.test(file.name)) throw new Error("Choose a JSON project file.");
+  if (file.size > 1_000_000) throw new Error("Project data is too large.");
+  return parseProject(JSON.parse(await file.text()));
 }
 export class WebAppConnector implements Connector {
   appMode = false;
@@ -78,7 +55,7 @@ export class WebAppConnector implements Connector {
       if (!Array.isArray(value)) throw new Error("Invalid project storage.");
       const projects = value.map(parseProject);
       const names = new Set(projects.map((item) => item.name.toLowerCase()));
-      if (names.size !== projects.length || !projects.some((item) => item.name === "default"))
+      if (names.size !== projects.length || !projects.length)
         throw new Error("Invalid project list.");
       return projects;
     }
@@ -92,13 +69,35 @@ export class WebAppConnector implements Connector {
     localStorage.setItem(storageKey, JSON.stringify([project]));
     return [project];
   }
-  async create(input: string, template: TemplateName, outputs: string[]): Promise<Project> {
+  async create(
+    input: string,
+    template: TemplateName,
+    outputs: string[],
+    includePalettes = true,
+  ): Promise<Project> {
     const projects = await this.list();
     const name = projectName(input);
     checkProjectName(name, projects);
-    const project = parseProject({ version: 1, name, outputs, data: templateData(template) });
+    const project = parseProject({
+      version: 1,
+      name,
+      outputs,
+      data: templateData(template, includePalettes),
+    });
     localStorage.setItem(storageKey, JSON.stringify([...projects, project]));
     return project;
+  }
+  async importProject(input: Project): Promise<Project> {
+    const projects = await this.list();
+    const imported = prepareImport(input, projects);
+    localStorage.setItem(storageKey, JSON.stringify([...projects, imported]));
+    return imported;
+  }
+  async delete(name: string): Promise<void> {
+    const projects = await this.list();
+    if (!projects.some((item) => item.name === name)) throw new Error("Project not found.");
+    if (projects.length < 2) throw new Error("Keep at least one project.");
+    localStorage.setItem(storageKey, JSON.stringify(projects.filter((item) => item.name !== name)));
   }
   async load(name: string): Promise<Project> {
     const project = (await this.list()).find((item) => item.name === name);

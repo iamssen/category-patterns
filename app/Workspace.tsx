@@ -17,7 +17,7 @@ function currentRoute(): string {
   return window.location.hash.slice(1) || "/";
 }
 function routeProject(route: string): string | undefined {
-  if (route === "/") return "default";
+  if (route === "/") return "";
   const match = /^\/project\/([^/]+)$/.exec(route);
   if (!match) return undefined;
   try {
@@ -147,7 +147,7 @@ export function Workspace(): Element {
             <div class="projects-page" style={createTheme(DEFAULT_BACKGROUND).style}>
               <main>
                 <h1>Page not found</h1>
-                <button onClick={() => navigate("/")}>Open default project</button>
+                <button onClick={() => navigate("/projects")}>Open projects</button>
               </main>
             </div>
           );

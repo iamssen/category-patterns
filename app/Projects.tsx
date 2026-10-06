@@ -1,7 +1,7 @@
 import { createSignal, flush, For, onSettled, Show } from "solid-js";
 import type { Element } from "solid-js";
 import { connector } from "./connector.ts";
-import { exportProjects } from "./web-connector.ts";
+import { exportProject, readProjectFile } from "./web-connector.ts";
 import { outputLines } from "./projects.ts";
 import type { Project, TemplateName } from "./projects.ts";
 import type { PageProps } from "./Workspace.tsx";
@@ -32,13 +32,15 @@ export function Projects(props: PageProps): Element {
   const [loaded, setLoaded] = createSignal(false);
   const [name, setName] = createSignal("");
   const [template, setTemplate] = createSignal<TemplateName>("dark");
+  const [includePalettes, setIncludePalettes] = createSignal(true);
   const [outputs, setOutputs] = createSignal("");
   const [drafts, setDrafts] = createSignal<Record<string, string>>({});
-  const [exportPaths, setExportPaths] = createSignal<Record<string, string>>({});
+  const [deleting, setDeleting] = createSignal<Project>();
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal("");
   const [message, setMessage] = createSignal("");
-  let exportDialog: HTMLDialogElement | undefined;
+  let deleteDialog: HTMLDialogElement | undefined;
+  let importInput: HTMLInputElement | undefined;
   const dirty = () => Object.keys(drafts()).length > 0;
   async function load(): Promise<void> {
     try {
@@ -98,6 +100,7 @@ export function Projects(props: PageProps): Element {
         name(),
         template(),
         connector.appMode ? outputLines(outputs()) : [],
+        includePalettes(),
       );
       setProjects((items) => [...items, project]);
       setName("");
@@ -111,35 +114,56 @@ export function Projects(props: PageProps): Element {
       setBusy(false);
     }
   }
-  async function startExport(): Promise<void> {
-    if (busy()) return;
-    setError("");
-    setExportPaths(
-      Object.fromEntries(projects().map((project) => [project.name, project.outputs.join("\n")])),
-    );
-    exportDialog?.showModal();
-  }
-  async function download(): Promise<void> {
-    if (busy()) return;
+  async function download(project: Project): Promise<void> {
+    if (busy() || !loaded()) return;
     setBusy(true);
     setError("");
+    setMessage("");
     try {
-      // Reload saved data: project export never captures unsaved palette edits.
-      const saved = (await connector.list()).map((project) => ({
-        ...project,
-        outputs: outputLines(exportPaths()[project.name] ?? ""),
-      }));
-      if (saved.some((project) => !project.outputs.length))
-        throw new Error("Add at least one output directory for every project.");
-      await exportProjects(saved);
-      for (const project of saved) await connector.save(project);
-      setProjects(saved);
-      exportDialog?.close();
-      setMessage(
-        "projects.zip downloaded. Extract its YAML files into ~/category-patterns/, then run the App.",
-      );
+      const saved = await connector.load(project.name);
+      exportProject(saved);
+      setMessage(`${saved.name}.json downloaded.`);
     } catch (error_) {
-      setError(error_ instanceof Error ? error_.message : "Failed to export projects.");
+      setError(error_ instanceof Error ? error_.message : "Failed to export project.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function importFile(file: File | undefined): Promise<void> {
+    if (busy() || !loaded() || !file) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const imported = await connector.importProject(await readProjectFile(file));
+      setProjects((items) => [...items, imported]);
+      setMessage(`Imported ${imported.name}.`);
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : "Failed to import project.");
+    } finally {
+      setBusy(false);
+      if (importInput) importInput.value = "";
+    }
+  }
+  async function removeProject(): Promise<void> {
+    const project = deleting();
+    if (busy() || !project) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await connector.delete(project.name);
+      setProjects((items) => items.filter((item) => item.name !== project.name));
+      setDrafts((items) => {
+        const next = { ...items };
+        delete next[project.name];
+        return next;
+      });
+      deleteDialog?.close();
+      setDeleting(undefined);
+      setMessage(`${project.name} deleted.`);
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : "Failed to delete project.");
     } finally {
       setBusy(false);
     }
@@ -162,21 +186,21 @@ export function Projects(props: PageProps): Element {
             <p>Keep palettes and settings together for each project.</p>
           </div>
           <div class="actions">
-            <button disabled={busy()} onClick={() => props.navigate("/")}>
-              Open default
+            <input
+              ref={(element) => {
+                importInput = element;
+              }}
+              type="file"
+              accept=".json,application/json"
+              hidden
+              onChange={(event) => void importFile(event.currentTarget.files?.[0])}
+            />
+            <button disabled={!loaded() || busy()} onClick={() => importInput?.click()}>
+              Import project
             </button>
-            <Show when={!connector.appMode}>
-              <button
-                class="primary"
-                disabled={!loaded() || busy()}
-                onClick={() => void startExport()}
-              >
-                Export projects
-              </button>
-            </Show>
           </div>
         </header>
-        <Show when={error() && !exportDialog?.open}>
+        <Show when={error() && !deleting()}>
           <div class="notice error" role="alert">
             {error()}
             <Show when={!loaded()}>
@@ -212,28 +236,42 @@ export function Projects(props: PageProps): Element {
                     </div>
                     <button
                       disabled={busy()}
-                      onClick={() =>
-                        props.navigate(
-                          project.name === "default"
-                            ? "/"
-                            : `/project/${encodeURIComponent(project.name)}`,
-                        )
-                      }
+                      onClick={() => props.navigate(`/project/${encodeURIComponent(project.name)}`)}
                     >
                       Open →
                     </button>
                   </div>
-                  <div class="project-colors" aria-hidden="true">
-                    <For
-                      each={
-                        project.data.palettes.find((item) => item.categories.length === 8)
-                          ?.categories ??
-                        project.data.palettes[0]?.categories ??
-                        []
-                      }
-                    >
-                      {(category) => <i style={{ "background-color": category.color }} />}
-                    </For>
+                  <Show when={project.data.palettes.length > 0}>
+                    <div class="project-colors" aria-hidden="true">
+                      <For
+                        each={
+                          project.data.palettes.find((item) => item.categories.length === 8)
+                            ?.categories ??
+                          project.data.palettes[0]?.categories ??
+                          []
+                        }
+                      >
+                        {(category) => <i style={{ "background-color": category.color }} />}
+                      </For>
+                    </div>
+                  </Show>
+                  <div class="project-card-actions">
+                    <button disabled={busy()} onClick={() => void download(project)}>
+                      Export project
+                    </button>
+                    <Show when={projects().length > 1}>
+                      <button
+                        class="danger"
+                        disabled={busy()}
+                        onClick={() => {
+                          setError("");
+                          setDeleting(project);
+                          deleteDialog?.showModal();
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </Show>
                   </div>
                   <Show when={connector.appMode}>
                     <label class="directory-label">
@@ -275,7 +313,7 @@ export function Projects(props: PageProps): Element {
           </section>
           <section class="project-create panel">
             <h2>Create a project</h2>
-            <p>Start with a sample palette, then make it yours.</p>
+            <p>Choose a sample theme, with or without palettes.</p>
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -311,6 +349,15 @@ export function Projects(props: PageProps): Element {
                   )}
                 </For>
               </fieldset>
+              <label class="include-palettes">
+                <input
+                  type="checkbox"
+                  checked={includePalettes()}
+                  disabled={busy()}
+                  onChange={(event) => setIncludePalettes(event.currentTarget.checked)}
+                />
+                Include palettes
+              </label>
               <Show when={connector.appMode}>
                 <label>
                   Output directories
@@ -338,80 +385,52 @@ export function Projects(props: PageProps): Element {
         </div>
         <Show when={!connector.appMode}>
           <p class="project-storage-note">
-            Projects are saved in this browser. Export projects to continue working in the local
-            App.
+            Projects are saved in this browser. Export a saved project as JSON to share or back it
+            up.
           </p>
         </Show>
         <dialog
           ref={(element) => {
-            exportDialog = element;
+            deleteDialog = element;
           }}
-          class="project-dialog export-dialog"
+          class="project-dialog"
           onCancel={(event) => {
             if (busy()) event.preventDefault();
-            else setError("");
+            else {
+              setDeleting(undefined);
+              setError("");
+            }
           }}
         >
-          <h2>Continue in the App</h2>
+          <h2>Delete project?</h2>
           <p>
-            Choose SVG output directories for each saved project. Extract projects.zip into{" "}
-            <code>~/category-patterns/</code>.
+            Delete “{deleting()?.name}” and its saved palettes and settings? This cannot be undone.
           </p>
+          <Show when={connector.appMode}>
+            <p>
+              Generated SVGs stay in their output directories. Those directories remain reserved.
+            </p>
+          </Show>
           <Show when={error()}>
             <div class="notice error" role="alert">
               {error()}
             </div>
           </Show>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void download();
-            }}
-          >
-            <div class="export-fields">
-              <For each={projects()}>
-                {(project) => (
-                  <label>
-                    {project.name}
-                    <textarea
-                      ref={(element) => setupTextarea(element)}
-                      rows={Math.max(2, (exportPaths()[project.name] ?? "").split("\n").length)}
-                      required
-                      disabled={busy()}
-                      value={exportPaths()[project.name] ?? ""}
-                      placeholder="~/Workspace/my-project/public/category-patterns"
-                      onInput={(event) => {
-                        setExportPaths((items) => ({
-                          ...items,
-                          [project.name]: event.currentTarget.value,
-                        }));
-                        autoSize(event.currentTarget);
-                      }}
-                    />
-                  </label>
-                )}
-              </For>
-            </div>
-            <small>
-              One directory per line. Relative paths start at ~/category-patterns/. Use separate
-              directories for each project.
-            </small>
-            <div class="dialog-actions">
-              <button
-                type="button"
-                disabled={busy()}
-                onClick={() => {
-                  exportDialog?.close();
-                  setError("");
-                }}
-              >
-                Cancel
-              </button>
-              <button class="primary" type="submit" disabled={busy()}>
-                {busy() ? "Preparing…" : "Download projects.zip"}
-              </button>
-            </div>
-          </form>
+          <div class="dialog-actions">
+            <button
+              disabled={busy()}
+              onClick={() => {
+                deleteDialog?.close();
+                setDeleting(undefined);
+                setError("");
+              }}
+            >
+              Cancel
+            </button>
+            <button class="danger" disabled={busy()} onClick={() => void removeProject()}>
+              {busy() ? "Deleting…" : "Delete project"}
+            </button>
+          </div>
         </dialog>
       </main>
     </div>

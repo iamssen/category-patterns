@@ -27,9 +27,10 @@ export function outputLines(input: string): string[] {
     ),
   ];
 }
-export function templateData(name: TemplateName): PaletteData {
+export function templateData(name: TemplateName, includePalettes = true): PaletteData {
   if (name !== "dark" && name !== "light") throw new Error("Unknown template.");
-  return parseData(structuredClone(name === "light" ? light : dark));
+  const data = parseData(structuredClone(name === "light" ? light : dark));
+  return includePalettes ? data : { ...data, palettes: [] };
 }
 export function parseProject(input: unknown): Project {
   if (!input || typeof input !== "object") throw new Error("Invalid project.");
@@ -51,4 +52,17 @@ export function parseProject(input: unknown): Project {
 export function checkProjectName(name: string, projects: Project[]): void {
   if (projects.some((item) => item.name.toLowerCase() === name.toLowerCase()))
     throw new Error("A project with this name already exists.");
+}
+
+export function prepareImport(input: unknown, existing: Pick<Project, "name">[]): Project {
+  const project = parseProject(input);
+  const original = project.name;
+  let suffix = 2;
+  while (existing.some((item) => item.name.toLowerCase() === project.name.toLowerCase())) {
+    const ending = `-${suffix++}`;
+    project.name = `${original.slice(0, 64 - ending.length)}${ending}`;
+  }
+  // Output directories belong to the recipient's machine.
+  project.outputs = [];
+  return project;
 }

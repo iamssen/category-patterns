@@ -10,7 +10,14 @@ export interface Connector {
   exportProgress: string;
   exportSuccess: string;
   list(): Promise<Project[]>;
-  create(name: string, template: TemplateName, outputs: string[]): Promise<Project>;
+  create(
+    name: string,
+    template: TemplateName,
+    outputs: string[],
+    includePalettes?: boolean,
+  ): Promise<Project>;
+  importProject(project: Project): Promise<Project>;
+  delete(name: string): Promise<void>;
   load(name: string): Promise<Project>;
   save(project: Project): Promise<void>;
   exportSVGs(name: string, data: PaletteData): Promise<void>;
