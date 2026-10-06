@@ -1,6 +1,12 @@
 import { createMemo, createSignal, flush, For, onSettled, Show } from "solid-js";
 import type { Element } from "solid-js";
-import { DEFAULT_GENERATION_SETTINGS, emptyData, isValidName, PATTERN_TYPES } from "./model.ts";
+import {
+  DEFAULT_GENERATION_SETTINGS,
+  DEFAULT_PATTERN_LIGHTEN,
+  emptyData,
+  isValidName,
+  PATTERN_TYPES,
+} from "./model.ts";
 import type { GenerationRequest } from "./generation.worker.ts";
 import type { Category, Palette, PaletteData } from "./model.ts";
 import { Preview } from "./Preview.tsx";
@@ -12,6 +18,7 @@ import type { Project } from "./projects.ts";
 import type { PageProps } from "./Workspace.tsx";
 
 import { connector } from "./connector.ts";
+import { exportProject } from "./web-connector.ts";
 
 export function App(props: PageProps & { projectName: string }): Element {
   let project: Project | undefined;
@@ -29,7 +36,6 @@ export function App(props: PageProps & { projectName: string }): Element {
   const [editingCategory, setEditingCategory] = createSignal<number | undefined>();
   const [editorHex, setEditorHex] = createSignal("");
   let categoryEditor: HTMLDivElement | undefined;
-  let appElement: HTMLDivElement | undefined;
   const editorHexInvalid = () => !/^#?(?:[\da-f]{3}|[\da-f]{6})$/i.test(editorHex());
   const [rename, setRename] = createSignal("");
   const [busy, setBusy] = createSignal("");
@@ -47,7 +53,7 @@ export function App(props: PageProps & { projectName: string }): Element {
   });
   const theme = createMemo(() => createTheme(data().background));
   function setBackground(background: string): void {
-    change({ ...data(), background, backgroundConfirmed: true });
+    change({ ...data(), background, backgroundConfirmed: true }, "background");
   }
   function setLightness(index: 0 | 1, input: HTMLInputElement): void {
     const percent = input.valueAsNumber;
@@ -57,7 +63,7 @@ export function App(props: PageProps & { projectName: string }): Element {
       index === 0
         ? Math.min(percent / 100, lightness[1] - 0.01)
         : Math.max(percent / 100, lightness[0] + 0.01);
-    change({ ...data(), generation: { ...data().generation, lightness } });
+    change({ ...data(), generation: { ...data().generation, lightness } }, `lightness:${index}`);
     input.value = String(Math.round(lightness[index] * 100));
   }
   function setPatternRange(
@@ -69,20 +75,138 @@ export function App(props: PageProps & { projectName: string }): Element {
     if (!Number.isFinite(value) || !input.validity.valid) return;
     const range: [number, number] = [...data().generation[key]];
     range[index] = index === 0 ? Math.min(value, range[1]) : Math.max(value, range[0]);
-    change({ ...data(), generation: { ...data().generation, [key]: range } });
+    change({ ...data(), generation: { ...data().generation, [key]: range } }, `${key}:${index}`);
     input.value = String(range[index]);
   }
   let worker: Worker | undefined;
-
-  function change(next: PaletteData): void {
+  type Snapshot = { data: PaletteData; selected: string; editing?: number };
+  const [past, setPast] = createSignal<Snapshot[]>([]);
+  const [future, setFuture] = createSignal<Snapshot[]>([]);
+  let savedData = "";
+  let changeGroup = "";
+  function endChangeGroup(): void {
+    changeGroup = "";
+  }
+  function snapshot(): Snapshot {
+    return { data: data(), selected: selected(), editing: editingCategory() };
+  }
+  function change(next: PaletteData, group = ""): void {
+    if (JSON.stringify(next) === JSON.stringify(data())) return;
+    const previous = snapshot();
+    if (!group || group !== changeGroup) setPast((items) => [...items.slice(-99), previous]);
+    changeGroup = group;
+    setFuture([]);
     setData(next);
-    setDirty(true);
+    setDirty(JSON.stringify(next) !== savedData);
     setMessage("");
+    flush();
+  }
+  function restore(value: Snapshot): void {
+    closeCategoryEditor();
+    endChangeGroup();
+    setData(value.data);
+    const item =
+      value.data.palettes.find((item) => item.id === value.selected) ?? value.data.palettes[0];
+    setSelected(item?.id ?? "");
+    setRename(item?.name ?? "");
+    setDirty(JSON.stringify(value.data) !== savedData);
+    setError("");
+    setMessage("");
+    flush();
+    if (value.editing !== undefined && item?.categories[value.editing]) {
+      setEditingCategory(value.editing);
+      setEditorHex(item.categories[value.editing].color);
+      flush();
+      categoryEditor?.showPopover();
+      positionCategoryEditor();
+    }
+    rememberView();
+  }
+  function undo(): void {
+    if (busy() || !past().length) return;
+    const value = past().at(-1)!;
+    const current = snapshot();
+    setFuture((items) => [...items, current]);
+    setPast((items) => items.slice(0, -1));
+    restore(value);
+  }
+  function redo(): void {
+    if (busy() || !future().length) return;
+    const value = future().at(-1)!;
+    const current = snapshot();
+    setPast((items) => [...items, current]);
+    setFuture((items) => items.slice(0, -1));
+    restore(value);
+  }
+  function viewKey(): string {
+    return `category-patterns:view:${activeProjectName()}`;
+  }
+  function rememberView(): void {
+    try {
+      sessionStorage.setItem(
+        viewKey(),
+        JSON.stringify({ selected: selected(), settingsOpen: settingsOpen() }),
+      );
+    } catch {
+      /* Storage may be unavailable. */
+    }
+  }
+  function suggestName(base = `scheme${count()}`): string {
+    const names = new Set(data().palettes.map((item) => item.name.toLowerCase()));
+    const root = base.replace(/-\d+$/, "");
+    if (root !== base && names.has(root.toLowerCase())) base = root;
+    let next = base;
+    for (let suffix = 2; names.has(next.toLowerCase()); suffix++)
+      next = `${base.slice(0, 58)}-${suffix}`;
+    return next;
+  }
+  async function shareProject(): Promise<void> {
+    if (!project || busy()) return;
+    setBusy("Exporting project…");
+    setError("");
+    try {
+      await exportProject({ ...project, data: data() });
+      setMessage("Project exported with current edits.");
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : "Failed to export project.");
+    } finally {
+      setBusy("");
+    }
+  }
+  async function copyColor(): Promise<void> {
+    const color = editedCategory()?.color;
+    if (!color) return;
+    try {
+      await navigator.clipboard.writeText(color);
+      setMessage(`${color} copied.`);
+    } catch {
+      setError("Could not copy. Select the HEX field and copy it manually.");
+    }
+  }
+  function moveCategory(direction: -1 | 1): void {
+    const item = palette();
+    const index = editingCategory();
+    if (!item || index === undefined || busy()) return;
+    const target = index + direction;
+    if (target < 0 || target >= item.categories.length) return;
+    const categories = [...item.categories];
+    [categories[index], categories[target]] = [categories[target], categories[index]];
+    change({
+      ...data(),
+      palettes: data().palettes.map((value) =>
+        value.id === item.id ? { ...value, categories } : value,
+      ),
+    });
+    setEditingCategory(target);
+    setEditorHex(categories[target].color);
   }
   function select(item: Palette): void {
     closeCategoryEditor();
     setSelected(item.id);
     setRename(item.name);
+    endChangeGroup();
+    flush();
+    rememberView();
   }
   async function load(): Promise<void> {
     setError("");
@@ -98,8 +222,21 @@ export function App(props: PageProps & { projectName: string }): Element {
       const result = project.data;
       setOutputsConfigured(project.outputs.length > 0);
       setData(result);
-      setSettingsOpen(!result.backgroundConfirmed);
-      if (result.palettes[0]) select(result.palettes[0]);
+      savedData = JSON.stringify(result);
+      setDirty(false);
+      setPast([]);
+      setFuture([]);
+      let view: { selected?: string; settingsOpen?: boolean } = {};
+      try {
+        view = JSON.parse(sessionStorage.getItem(viewKey()) ?? "{}");
+      } catch {
+        /* Ignore unavailable or invalid view state. */
+      }
+      setSettingsOpen(typeof view?.settingsOpen === "boolean" ? view.settingsOpen : false);
+      flush();
+      const item = result.palettes.find((item) => item.id === view?.selected) ?? result.palettes[0];
+      if (item) select(item);
+      setName(suggestName());
       setLoaded(true);
     } catch (error_) {
       setError(error_ instanceof Error ? error_.message : "Failed to load data.");
@@ -116,6 +253,32 @@ export function App(props: PageProps & { projectName: string }): Element {
       if (event.target instanceof Node && !createActions?.contains(event.target))
         setCreateOptionsOpen(false);
     };
+    const historyKeys = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey) ||
+        event.altKey ||
+        document.querySelector("dialog:modal")
+      )
+        return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.matches("input:not([type=range]), textarea, [contenteditable=true]")
+      )
+        return;
+      if (event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+      } else if (event.key.toLowerCase() === "y" && event.ctrlKey) {
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", historyKeys);
+    window.addEventListener("pointerup", endChangeGroup);
+    window.addEventListener("keyup", endChangeGroup);
+    window.addEventListener("focusout", endChangeGroup);
     window.addEventListener("pointerdown", dismissOptions);
     window.addEventListener("resize", positionCategoryEditor);
     window.addEventListener("scroll", positionCategoryEditor, true);
@@ -124,6 +287,10 @@ export function App(props: PageProps & { projectName: string }): Element {
       unregister();
       worker?.terminate();
       window.removeEventListener("beforeunload", beforeUnload);
+      window.removeEventListener("keydown", historyKeys);
+      window.removeEventListener("pointerup", endChangeGroup);
+      window.removeEventListener("keyup", endChangeGroup);
+      window.removeEventListener("focusout", endChangeGroup);
       window.removeEventListener("pointerdown", dismissOptions);
       window.removeEventListener("resize", positionCategoryEditor);
       window.removeEventListener("scroll", positionCategoryEditor, true);
@@ -196,6 +363,7 @@ export function App(props: PageProps & { projectName: string }): Element {
           : [...data().palettes, next],
       });
       select(next);
+      if (!existing) setName(suggestName(nextName));
     } catch (error_) {
       setError(error_ instanceof Error ? error_.message : "Generation failed.");
     } finally {
@@ -228,6 +396,7 @@ export function App(props: PageProps & { projectName: string }): Element {
       change({ ...data(), palettes: [...data().palettes, next] });
       select(next);
       setCount(colors.length);
+      setName(suggestName(nextName));
       setError("");
       setColorCodes("");
       colorCodesDialog?.close();
@@ -252,37 +421,33 @@ export function App(props: PageProps & { projectName: string }): Element {
   }
   function positionCategoryEditor(): void {
     if (!categoryEditor?.matches(":popover-open")) return;
-    const anchor = appElement?.querySelector<HTMLButtonElement>(
-      `[data-category-index="${editingCategory()}"]`,
-    );
-    if (!anchor) return;
-    const rect = anchor.getBoundingClientRect();
     const panel = categoryEditor.getBoundingClientRect();
-    const gap = 10;
-    const top =
-      rect.bottom + gap + panel.height <= window.innerHeight - 12
-        ? rect.bottom + gap
-        : rect.top - gap - panel.height;
-    categoryEditor.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - panel.width - 12))}px`;
-    categoryEditor.style.top = `${Math.max(12, Math.min(top, window.innerHeight - panel.height - 12))}px`;
+    categoryEditor.style.left = `${Math.max(12, window.innerWidth - panel.width - 12)}px`;
+    categoryEditor.style.top =
+      window.innerWidth >= 1150
+        ? "12px"
+        : `${Math.max(12, window.innerHeight - panel.height - 12)}px`;
   }
   function editCategory(patch: Partial<Category>): void {
     const item = palette();
     const index = editingCategory();
     if (!item || index === undefined || busy()) return;
-    change({
-      ...data(),
-      palettes: data().palettes.map((value) =>
-        value.id === item.id
-          ? {
-              ...value,
-              categories: value.categories.map((category, entryIndex) =>
-                entryIndex === index ? { ...category, ...patch } : category,
-              ),
-            }
-          : value,
-      ),
-    });
+    change(
+      {
+        ...data(),
+        palettes: data().palettes.map((value) =>
+          value.id === item.id
+            ? {
+                ...value,
+                categories: value.categories.map((category, entryIndex) =>
+                  entryIndex === index ? { ...category, ...patch } : category,
+                ),
+              }
+            : value,
+        ),
+      },
+      `category:${selected()}:${index}:${Object.keys(patch).join(",")}`,
+    );
   }
   function editHex(value: string): void {
     setEditorHex(value);
@@ -298,7 +463,7 @@ export function App(props: PageProps & { projectName: string }): Element {
     if (!Number.isFinite(value) || !input.validity.valid) return;
     editCategory({ [key]: value });
   }
-  async function randomizeEditedCategory(mode: "color" | "pattern"): Promise<void> {
+  async function randomizeEditedCategory(mode: "color" | "pattern" | "both"): Promise<void> {
     const index = editingCategory();
     if (index === undefined) return;
     await rerollCategory(index, mode);
@@ -431,6 +596,9 @@ export function App(props: PageProps & { projectName: string }): Element {
       const saved = data();
       await connector.save({ ...project, data: saved });
       if (data() !== saved) return false;
+      savedData = JSON.stringify(saved);
+      project = { ...project, data: saved };
+      endChangeGroup();
       setDirty(false);
       setMessage(`${data().palettes.length} palettes saved.`);
       return true;
@@ -458,13 +626,7 @@ export function App(props: PageProps & { projectName: string }): Element {
   }
 
   return (
-    <div
-      class="app"
-      style={theme().style}
-      ref={(element) => {
-        appElement = element;
-      }}
-    >
+    <div class="app" style={theme().style}>
       <aside class="sidebar">
         <header>
           <span class="eyebrow">Visual asset manager</span>
@@ -496,77 +658,80 @@ export function App(props: PageProps & { projectName: string }): Element {
           </span>
           <span aria-hidden="true">⇄</span>
         </button>
-        <form
-          class="create"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void generate();
-          }}
-        >
-          <label>
-            Palette name
-            <input
-              value={name()}
-              onInput={(event) => setName(event.currentTarget.value)}
-              maxlength={64}
-              required
-              disabled={Boolean(busy())}
-            />
-          </label>
-          <label>
-            Color count
-            <input
-              type="number"
-              min="1"
-              max="20"
-              step="1"
-              value={count()}
-              onInput={(event) => setCount(event.currentTarget.valueAsNumber)}
-              required
-              disabled={Boolean(busy())}
-            />
-          </label>
-          <div
-            class="create-actions"
-            ref={(element) => {
-              createActions = element;
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setCreateOptionsOpen(false);
+        <details class="create-section" open={!window.matchMedia("(width < 700px)").matches}>
+          <summary>Create a palette</summary>
+          <form
+            class="create"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void generate();
             }}
           >
-            <div class="create-button-group" role="group" aria-label="Create palette">
-              <button type="submit" disabled={!loaded() || Boolean(busy())}>
-                ＋ Create palette
-              </button>
-              <button
-                type="button"
-                class="create-options-button"
-                aria-label="Palette creation options"
-                aria-expanded={createOptionsOpen() ? "true" : "false"}
-                aria-controls="palette-creation-options"
-                disabled={!loaded() || Boolean(busy())}
-                onClick={() => setCreateOptionsOpen((open) => !open)}
-              >
-                <span aria-hidden="true">▾</span>
-              </button>
-            </div>
-            <Show when={createOptionsOpen()}>
-              <div class="create-options" id="palette-creation-options">
+            <label>
+              Palette name
+              <input
+                value={name()}
+                onInput={(event) => setName(event.currentTarget.value)}
+                maxlength={64}
+                required
+                disabled={Boolean(busy())}
+              />
+            </label>
+            <label>
+              Color count
+              <input
+                type="number"
+                min="1"
+                max="20"
+                step="1"
+                value={count()}
+                onInput={(event) => setCount(event.currentTarget.valueAsNumber)}
+                required
+                disabled={Boolean(busy())}
+              />
+            </label>
+            <div
+              class="create-actions"
+              ref={(element) => {
+                createActions = element;
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setCreateOptionsOpen(false);
+              }}
+            >
+              <div class="create-button-group" role="group" aria-label="Create palette">
+                <button type="submit" disabled={!loaded() || Boolean(busy())}>
+                  ＋ Create palette
+                </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setCreateOptionsOpen(false);
-                    setColorCodesError("");
-                    colorCodesDialog?.showModal();
-                  }}
+                  class="create-options-button"
+                  aria-label="Palette creation options"
+                  aria-expanded={createOptionsOpen() ? "true" : "false"}
+                  aria-controls="palette-creation-options"
+                  disabled={!loaded() || Boolean(busy())}
+                  onClick={() => setCreateOptionsOpen((open) => !open)}
                 >
-                  Create from color codes…
+                  <span aria-hidden="true">▾</span>
                 </button>
               </div>
-            </Show>
-          </div>
-        </form>
+              <Show when={createOptionsOpen()}>
+                <div class="create-options" id="palette-creation-options">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreateOptionsOpen(false);
+                      setColorCodesError("");
+                      colorCodesDialog?.showModal();
+                    }}
+                  >
+                    Create from color codes…
+                  </button>
+                </div>
+              </Show>
+            </div>
+          </form>
+        </details>
         <nav aria-label="Palette list">
           <div class="list-heading">
             Palettes <span>{data().palettes.length}</span>
@@ -578,6 +743,7 @@ export function App(props: PageProps & { projectName: string }): Element {
             {(item) => (
               <button
                 class={["palette-button", { active: selected() === item.id }]}
+                disabled={Boolean(busy())}
                 onClick={() => select(item)}
                 aria-pressed={selected() === item.id ? "true" : "false"}
               >
@@ -593,6 +759,23 @@ export function App(props: PageProps & { projectName: string }): Element {
           </For>
         </nav>
         <footer>
+          <div class="history-actions" role="group" aria-label="Edit history">
+            <button
+              disabled={Boolean(busy()) || !past().length}
+              onClick={undo}
+              title="Undo (⌘/Ctrl Z)"
+            >
+              Undo
+            </button>
+            <button
+              disabled={Boolean(busy()) || !future().length}
+              onClick={redo}
+              title="Redo (⌘/Ctrl Shift Z)"
+            >
+              Redo
+            </button>
+            <span role="status">{busy() || (dirty() ? "Unsaved changes" : "Saved")}</span>
+          </div>
           <div class="save-actions" role="group" aria-label="Save and export palettes">
             <button disabled={!loaded() || Boolean(busy()) || !dirty()} onClick={() => void save()}>
               Save
@@ -613,7 +796,22 @@ export function App(props: PageProps & { projectName: string }): Element {
               </button>
             </div>
           </Show>
-          <small>{connector.description}</small>
+          <details class="project-tools">
+            <summary>Project actions</summary>
+            <button disabled={!loaded() || Boolean(busy())} onClick={() => void shareProject()}>
+              Export project
+            </button>
+            <Show when={loaded() && connector.appMode && project?.outputs.length}>
+              <button
+                disabled={Boolean(busy())}
+                title={project?.outputs.join("\n")}
+                onClick={() => props.navigate("/projects")}
+              >
+                Output directories ({project?.outputs.length})
+              </button>
+            </Show>
+            <small>{connector.description} Export project includes current edits.</small>
+          </details>
         </footer>
       </aside>
       <dialog
@@ -687,6 +885,10 @@ export function App(props: PageProps & { projectName: string }): Element {
           if (event.newState === "closed") setEditingCategory(undefined);
         }}
       >
+        <div class="category-editor-heading">
+          <strong>Category {(editingCategory() ?? 0) + 1}</strong>
+          <span>Color and pattern</span>
+        </div>
         <div class="category-editor-color">
           <input
             type="color"
@@ -719,6 +921,23 @@ export function App(props: PageProps & { projectName: string }): Element {
             Use #RGB or #RRGGBB.
           </small>
         </Show>
+        <div class="category-order">
+          <button
+            disabled={Boolean(busy()) || editingCategory() === 0}
+            onClick={() => moveCategory(-1)}
+          >
+            Move left
+          </button>
+          <button
+            disabled={
+              Boolean(busy()) || (editingCategory() ?? 0) >= (palette()?.categories.length ?? 0) - 1
+            }
+            onClick={() => moveCategory(1)}
+          >
+            Move right
+          </button>
+          <button onClick={() => void copyColor()}>Copy HEX</button>
+        </div>
         <fieldset class="category-editor-patterns">
           <legend>
             Pattern <strong>{PATTERN_LABELS[editedCategory()?.pattern ?? "lines"]}</strong>
@@ -741,9 +960,25 @@ export function App(props: PageProps & { projectName: string }): Element {
           </div>
         </fieldset>
         <div class="category-editor-sliders">
-          <label>
+          <div class="pattern-setting">
             <span>
-              Angle <strong>{editedCategory()?.angle ?? 0}°</strong>
+              Angle{" "}
+              <span class="pattern-number">
+                <input
+                  type="number"
+                  aria-label="Angle value"
+                  min="-180"
+                  max="180"
+                  step="1"
+                  value={editedCategory()?.angle ?? 0}
+                  disabled={Boolean(busy())}
+                  onInput={(event) => editPatternNumber("angle", event.currentTarget)}
+                  onBlur={(event) => {
+                    event.currentTarget.value = String(editedCategory()?.angle ?? 0);
+                  }}
+                />
+                °
+              </span>
             </span>
             <input
               type="range"
@@ -756,10 +991,26 @@ export function App(props: PageProps & { projectName: string }): Element {
               disabled={Boolean(busy())}
               onInput={(event) => editPatternNumber("angle", event.currentTarget)}
             />
-          </label>
-          <label>
+          </div>
+          <div class="pattern-setting">
             <span>
-              Spacing <strong>{editedCategory()?.size ?? 8}px</strong>
+              Spacing{" "}
+              <span class="pattern-number">
+                <input
+                  type="number"
+                  aria-label="Spacing value"
+                  min="6"
+                  max="24"
+                  step="1"
+                  value={editedCategory()?.size ?? 8}
+                  disabled={Boolean(busy())}
+                  onInput={(event) => editPatternNumber("size", event.currentTarget)}
+                  onBlur={(event) => {
+                    event.currentTarget.value = String(editedCategory()?.size ?? 8);
+                  }}
+                />
+                px
+              </span>
             </span>
             <input
               type="range"
@@ -772,10 +1023,26 @@ export function App(props: PageProps & { projectName: string }): Element {
               disabled={Boolean(busy())}
               onInput={(event) => editPatternNumber("size", event.currentTarget)}
             />
-          </label>
-          <label>
+          </div>
+          <div class="pattern-setting">
             <span>
-              Thickness <strong>{editedCategory()?.strokeWidth ?? 1}px</strong>
+              Thickness{" "}
+              <span class="pattern-number">
+                <input
+                  type="number"
+                  aria-label="Thickness value"
+                  min="0.5"
+                  max="3"
+                  step="0.1"
+                  value={editedCategory()?.strokeWidth ?? 1}
+                  disabled={Boolean(busy())}
+                  onInput={(event) => editPatternNumber("strokeWidth", event.currentTarget)}
+                  onBlur={(event) => {
+                    event.currentTarget.value = String(editedCategory()?.strokeWidth ?? 1);
+                  }}
+                />
+                px
+              </span>
             </span>
             <input
               type="range"
@@ -788,7 +1055,7 @@ export function App(props: PageProps & { projectName: string }): Element {
               disabled={Boolean(busy())}
               onInput={(event) => editPatternNumber("strokeWidth", event.currentTarget)}
             />
-          </label>
+          </div>
         </div>
         <div class="category-editor-randomize">
           <button disabled={Boolean(busy())} onClick={() => void randomizeEditedCategory("color")}>
@@ -801,6 +1068,13 @@ export function App(props: PageProps & { projectName: string }): Element {
             Randomize pattern
           </button>
         </div>
+        <button
+          class="category-editor-randomize-all"
+          disabled={Boolean(busy())}
+          onClick={() => void randomizeEditedCategory("both")}
+        >
+          Randomize color + pattern
+        </button>
         <button
           class="category-editor-delete danger"
           disabled={Boolean(busy()) || (palette()?.categories.length ?? 0) <= 1}
@@ -852,7 +1126,10 @@ export function App(props: PageProps & { projectName: string }): Element {
               Is this the background you want to use? Keep it, or choose a color below before
               comparing palettes.
             </p>
-            <button onClick={() => change({ ...data(), backgroundConfirmed: true })}>
+            <button
+              disabled={Boolean(busy())}
+              onClick={() => change({ ...data(), backgroundConfirmed: true })}
+            >
               Yes, use this background
             </button>
           </div>
@@ -860,7 +1137,11 @@ export function App(props: PageProps & { projectName: string }): Element {
         <details
           class="settings"
           open={settingsOpen()}
-          onToggle={(event) => setSettingsOpen(event.currentTarget.open)}
+          onToggle={(event) => {
+            setSettingsOpen(event.currentTarget.open);
+            flush();
+            if (loaded()) rememberView();
+          }}
         >
           <summary>
             <strong>Global settings</strong>
@@ -888,7 +1169,9 @@ export function App(props: PageProps & { projectName: string }): Element {
           <table>
             <tbody>
               <tr>
-                <th scope="row">Pattern brightness</th>
+                <th scope="row">
+                  Pattern brightness <small class="setting-scope">Preview</small>
+                </th>
                 <td>
                   <div class="config-content">
                     <div class="config-control">
@@ -905,9 +1188,25 @@ export function App(props: PageProps & { projectName: string }): Element {
                         value={data().patternLighten}
                         disabled={!loaded() || Boolean(busy())}
                         onInput={(event) =>
-                          change({ ...data(), patternLighten: event.currentTarget.valueAsNumber })
+                          change(
+                            { ...data(), patternLighten: event.currentTarget.valueAsNumber },
+                            "brightness",
+                          )
                         }
                       />
+                      <button
+                        class="setting-restore"
+                        disabled={
+                          !loaded() ||
+                          Boolean(busy()) ||
+                          data().patternLighten === DEFAULT_PATTERN_LIGHTEN
+                        }
+                        onClick={() =>
+                          change({ ...data(), patternLighten: DEFAULT_PATTERN_LIGHTEN })
+                        }
+                      >
+                        Restore 12%
+                      </button>
                     </div>
                     <small id="brightness-hint">
                       Amount of white mixed into the pattern color. Updates existing patterns
@@ -917,7 +1216,9 @@ export function App(props: PageProps & { projectName: string }): Element {
                 </td>
               </tr>
               <tr>
-                <th scope="row">Background</th>
+                <th scope="row">
+                  Background <small class="setting-scope">Preview + generation</small>
+                </th>
                 <td>
                   <div class="config-content">
                     <div class="config-control background-setting">
@@ -947,7 +1248,9 @@ export function App(props: PageProps & { projectName: string }): Element {
                 </td>
               </tr>
               <tr>
-                <th scope="row">Color lightness</th>
+                <th scope="row">
+                  Color lightness <small class="setting-scope">Generation</small>
+                </th>
                 <td>
                   <div class="config-content">
                     <fieldset
@@ -1025,7 +1328,9 @@ export function App(props: PageProps & { projectName: string }): Element {
                 </td>
               </tr>
               <tr>
-                <th scope="row">Background contrast</th>
+                <th scope="row">
+                  Background contrast <small class="setting-scope">Generation</small>
+                </th>
                 <td>
                   <div class="config-content">
                     <div class="config-control">
@@ -1042,13 +1347,16 @@ export function App(props: PageProps & { projectName: string }): Element {
                         disabled={!loaded() || Boolean(busy())}
                         value={data().generation.contrastWeight}
                         onInput={(event) =>
-                          change({
-                            ...data(),
-                            generation: {
-                              ...data().generation,
-                              contrastWeight: event.currentTarget.valueAsNumber,
+                          change(
+                            {
+                              ...data(),
+                              generation: {
+                                ...data().generation,
+                                contrastWeight: event.currentTarget.valueAsNumber,
+                              },
                             },
-                          })
+                            "contrast",
+                          )
                         }
                       />
                       <button
@@ -1079,7 +1387,9 @@ export function App(props: PageProps & { projectName: string }): Element {
                 </td>
               </tr>
               <tr>
-                <th scope="row">Pattern spacing</th>
+                <th scope="row">
+                  Pattern spacing <small class="setting-scope">Generation</small>
+                </th>
                 <td>
                   <div class="config-content">
                     <fieldset
@@ -1160,7 +1470,9 @@ export function App(props: PageProps & { projectName: string }): Element {
                 </td>
               </tr>
               <tr>
-                <th scope="row">Pattern thickness</th>
+                <th scope="row">
+                  Pattern thickness <small class="setting-scope">Generation</small>
+                </th>
                 <td>
                   <div class="config-content">
                     <fieldset
@@ -1279,46 +1591,6 @@ export function App(props: PageProps & { projectName: string }): Element {
                 </header>
                 <section class="panel">
                   <div class="panel-heading">
-                    <h3>Stacked bars</h3>
-                    <span>Proportional / equal width · thin bars</span>
-                  </div>
-                  <Preview
-                    palette={current()}
-                    lighten={data().patternLighten}
-                    text={theme().text}
-                    muted={theme().muted}
-                    chart="stack"
-                  />
-                </section>
-                <div class="chart-grid">
-                  <section class="panel">
-                    <div class="panel-heading">
-                      <h3>Bar chart</h3>
-                      <span>Sample values</span>
-                    </div>
-                    <Preview
-                      palette={current()}
-                      lighten={data().patternLighten}
-                      text={theme().text}
-                      muted={theme().muted}
-                      chart="bars"
-                    />
-                  </section>
-                  <section class="panel">
-                    <div class="panel-heading">
-                      <h3>Donut chart</h3>
-                    </div>
-                    <Preview
-                      palette={current()}
-                      lighten={data().patternLighten}
-                      text={theme().text}
-                      muted={theme().muted}
-                      chart="donut"
-                    />
-                  </section>
-                </div>
-                <section class="panel">
-                  <div class="panel-heading">
                     <h3>Colors and patterns</h3>
                   </div>
                   <div class="swatches">
@@ -1340,9 +1612,9 @@ export function App(props: PageProps & { projectName: string }): Element {
                           <div class="swatch-details">
                             <button
                               disabled={Boolean(busy())}
-                              aria-label={`Randomize color and pattern for Category ${index() + 1}`}
-                              title="Randomize color and pattern"
-                              onClick={() => void rerollCategory(index(), "both")}
+                              aria-label={`Edit Category ${index() + 1}`}
+                              title="Edit color and pattern"
+                              onClick={() => openCategoryEditor(index())}
                             >
                               <strong>Category {index() + 1}</strong>
                             </button>
@@ -1398,6 +1670,46 @@ export function App(props: PageProps & { projectName: string }): Element {
                     </div>
                   </div>
                 </section>
+                <section class="panel">
+                  <div class="panel-heading">
+                    <h3>Stacked bars</h3>
+                    <span>Proportional / equal width · thin bars</span>
+                  </div>
+                  <Preview
+                    palette={current()}
+                    lighten={data().patternLighten}
+                    text={theme().text}
+                    muted={theme().muted}
+                    chart="stack"
+                  />
+                </section>
+                <div class="chart-grid">
+                  <section class="panel">
+                    <div class="panel-heading">
+                      <h3>Bar chart</h3>
+                      <span>Sample values</span>
+                    </div>
+                    <Preview
+                      palette={current()}
+                      lighten={data().patternLighten}
+                      text={theme().text}
+                      muted={theme().muted}
+                      chart="bars"
+                    />
+                  </section>
+                  <section class="panel">
+                    <div class="panel-heading">
+                      <h3>Donut chart</h3>
+                    </div>
+                    <Preview
+                      palette={current()}
+                      lighten={data().patternLighten}
+                      text={theme().text}
+                      muted={theme().muted}
+                      chart="donut"
+                    />
+                  </section>
+                </div>
                 <details class="manage">
                   <summary>Rename or delete palette</summary>
                   <div>

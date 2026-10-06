@@ -11,10 +11,11 @@ Compare them in bar, stacked bar, and donut previews, then export SVG assets for
 
 - Create palettes with the number of colors you need. Regenerate colors and patterns together, or patterns alone.
 - Use the options button beside **Create palette** to create a palette from 1–20 HEX colors in your preferred order. Separate codes with whitespace or punctuation, including commas, quotes, or brackets; `#RGB` and `#RRGGBB` work with or without `#`.
-- Click a swatch, HEX value, or pattern name to edit its color, pattern, angle, spacing, and thickness in a floating panel with instant previews. Choose patterns from preview buttons and adjust angle, spacing, and thickness with sliders. Randomize colors or patterns from the panel, or click the category name to randomize both.
+- Click a swatch, HEX value, or pattern name to edit its color, pattern, angle, spacing, and thickness in a floating panel with instant previews. Choose patterns from preview buttons and adjust angle, spacing, and thickness with sliders. Randomize colors or patterns from the panel. Move colors left or right, copy HEX values, or enter exact pattern values.
+- Undo and redo edits, regeneration, reordering, and deletions with the buttons or ⌘/Ctrl Z and ⌘/Ctrl Shift Z. History lasts until you leave the editor; text fields keep their normal undo behavior.
 - Tune pattern brightness, background color, and the lightness and contrast of newly generated colors.
 - Set minimum and maximum pattern spacing and thickness in Global settings to constrain randomized patterns. Equal bounds fix a value; existing patterns stay unchanged.
-- Keep separate projects with Dark or Light settings. Uncheck **Include palettes** to start empty. Use the **Project** button to switch or create projects.
+- Keep separate projects with Dark or Light settings. Uncheck **Include palettes** to start empty. Use the **Project** button to switch or create projects. The last selected palette and Global settings visibility are remembered for this browser session.
 
 ![Global settings for pattern brightness, background, lightness, and contrast](readme/screenshot2.png)
 
@@ -62,7 +63,7 @@ be shared or nested between projects. Use folders dedicated to these SVG assets.
 
 Use **Export project** on a project card to download its saved data as
 `{name}.category-patterns.svg`, with palette previews and embedded project data.
-Save palette edits before exporting. Use **Import project** in Web or Local App
+Project cards export saved data. In the editor, **Project actions → Export project** exports current edits without saving. Use **Import project** in Web or Local App
 to load one `.category-patterns.svg` project file. Existing names receive a numeric
 suffix; output directories are excluded so you can set your own.
 Preview text adapts to the project background, just like the App. Share the
