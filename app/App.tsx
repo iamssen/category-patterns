@@ -1,10 +1,10 @@
-import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import { createMemo, createSignal, flush, For, onSettled, Show } from "solid-js";
 import type { Element } from "solid-js";
-import { DEFAULT_GENERATION_SETTINGS, emptyData, isValidName } from "./model.ts";
+import { DEFAULT_GENERATION_SETTINGS, emptyData, isValidName, PATTERN_TYPES } from "./model.ts";
 import type { GenerationRequest } from "./generation.worker.ts";
-import type { Palette, PaletteData } from "./model.ts";
+import type { Category, Palette, PaletteData } from "./model.ts";
 import { Preview } from "./Preview.tsx";
-import { PATTERN_LABELS, randomCategories, swatchUrl } from "./svg.ts";
+import { PATTERN_LABELS, patternPreviewUrl, randomCategories, swatchUrl } from "./svg.ts";
 
 import { createTheme, DEFAULT_BACKGROUND } from "./theme.ts";
 
@@ -25,6 +25,11 @@ export function App(props: PageProps & { projectName: string }): Element {
   const [colorCodesError, setColorCodesError] = createSignal("");
   let createActions: HTMLDivElement | undefined;
   let colorCodesDialog: HTMLDialogElement | undefined;
+  const [editingCategory, setEditingCategory] = createSignal<number | undefined>();
+  const [editorHex, setEditorHex] = createSignal("");
+  let categoryEditor: HTMLDivElement | undefined;
+  let appElement: HTMLDivElement | undefined;
+  const editorHexInvalid = () => !/^#?(?:[\da-f]{3}|[\da-f]{6})$/i.test(editorHex());
   const [rename, setRename] = createSignal("");
   const [busy, setBusy] = createSignal("");
   const [loaded, setLoaded] = createSignal(false);
@@ -35,6 +40,10 @@ export function App(props: PageProps & { projectName: string }): Element {
   const [message, setMessage] = createSignal("");
   const [error, setError] = createSignal("");
   const palette = createMemo(() => data().palettes.find((item) => item.id === selected()));
+  const editedCategory = createMemo(() => {
+    const index = editingCategory();
+    return index === undefined ? undefined : palette()?.categories[index];
+  });
   const theme = createMemo(() => createTheme(data().background));
   function setBackground(background: string): void {
     change({ ...data(), background, backgroundConfirmed: true });
@@ -58,6 +67,7 @@ export function App(props: PageProps & { projectName: string }): Element {
     setMessage("");
   }
   function select(item: Palette): void {
+    closeCategoryEditor();
     setSelected(item.id);
     setRename(item.name);
   }
@@ -88,12 +98,16 @@ export function App(props: PageProps & { projectName: string }): Element {
         setCreateOptionsOpen(false);
     };
     window.addEventListener("pointerdown", dismissOptions);
+    window.addEventListener("resize", positionCategoryEditor);
+    window.addEventListener("scroll", positionCategoryEditor, true);
     return () => {
       disposed = true;
       unregister();
       worker?.terminate();
       window.removeEventListener("beforeunload", beforeUnload);
       window.removeEventListener("pointerdown", dismissOptions);
+      window.removeEventListener("resize", positionCategoryEditor);
+      window.removeEventListener("scroll", positionCategoryEditor, true);
     };
   });
 
@@ -200,6 +214,76 @@ export function App(props: PageProps & { projectName: string }): Element {
       setColorCodesError(error_ instanceof Error ? error_.message : "Failed to create palette.");
     }
   }
+  function closeCategoryEditor(): void {
+    categoryEditor?.hidePopover();
+    setEditingCategory(undefined);
+  }
+  function openCategoryEditor(index: number): void {
+    if (busy()) return;
+    const category = palette()?.categories[index];
+    if (!category || !categoryEditor) return;
+    setEditingCategory(index);
+    setEditorHex(category.color);
+    flush();
+    categoryEditor.showPopover();
+    positionCategoryEditor();
+    categoryEditor.querySelector<HTMLInputElement>('input[type="color"]')?.focus();
+  }
+  function positionCategoryEditor(): void {
+    if (!categoryEditor?.matches(":popover-open")) return;
+    const anchor = appElement?.querySelector<HTMLButtonElement>(
+      `[data-category-index="${editingCategory()}"]`,
+    );
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const panel = categoryEditor.getBoundingClientRect();
+    const gap = 10;
+    const top =
+      rect.bottom + gap + panel.height <= window.innerHeight - 12
+        ? rect.bottom + gap
+        : rect.top - gap - panel.height;
+    categoryEditor.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - panel.width - 12))}px`;
+    categoryEditor.style.top = `${Math.max(12, Math.min(top, window.innerHeight - panel.height - 12))}px`;
+  }
+  function editCategory(patch: Partial<Category>): void {
+    const item = palette();
+    const index = editingCategory();
+    if (!item || index === undefined || busy()) return;
+    change({
+      ...data(),
+      palettes: data().palettes.map((value) =>
+        value.id === item.id
+          ? {
+              ...value,
+              categories: value.categories.map((category, entryIndex) =>
+                entryIndex === index ? { ...category, ...patch } : category,
+              ),
+            }
+          : value,
+      ),
+    });
+  }
+  function editHex(value: string): void {
+    setEditorHex(value);
+    if (!/^#?(?:[\da-f]{3}|[\da-f]{6})$/i.test(value)) return;
+    const hex = value.replace(/^#/, "");
+    editCategory({
+      color:
+        `#${hex.length === 3 ? [...hex].map((digit) => digit + digit).join("") : hex}`.toUpperCase(),
+    });
+  }
+  function editPatternNumber(key: "angle" | "size" | "strokeWidth", input: HTMLInputElement): void {
+    const value = input.valueAsNumber;
+    if (!Number.isFinite(value) || !input.validity.valid) return;
+    editCategory({ [key]: value });
+  }
+  async function randomizeEditedCategory(mode: "color" | "pattern"): Promise<void> {
+    const index = editingCategory();
+    if (index === undefined) return;
+    await rerollCategory(index, mode);
+    flush();
+    if (editingCategory() === index) setEditorHex(editedCategory()?.color ?? "");
+  }
   function renamePalette(): void {
     const item = palette();
     if (!item) return;
@@ -215,6 +299,7 @@ export function App(props: PageProps & { projectName: string }): Element {
     }
   }
   function remove(): void {
+    closeCategoryEditor();
     const item = palette();
     if (!item) return;
     const remaining = data().palettes.filter((value) => value.id !== item.id);
@@ -307,7 +392,13 @@ export function App(props: PageProps & { projectName: string }): Element {
   }
 
   return (
-    <div class="app" style={theme().style}>
+    <div
+      class="app"
+      style={theme().style}
+      ref={(element) => {
+        appElement = element;
+      }}
+    >
       <aside class="sidebar">
         <header>
           <span class="eyebrow">Visual asset manager</span>
@@ -517,6 +608,135 @@ export function App(props: PageProps & { projectName: string }): Element {
           </div>
         </form>
       </dialog>
+      <div
+        id="category-editor"
+        class="category-editor"
+        popover="auto"
+        role="region"
+        aria-label="Color and pattern editor"
+        ref={(element) => {
+          categoryEditor = element;
+        }}
+        onToggle={(event) => {
+          if (event.newState === "closed") setEditingCategory(undefined);
+        }}
+      >
+        <div class="category-editor-color">
+          <input
+            type="color"
+            aria-label="Category color"
+            value={editedCategory()?.color ?? "#000000"}
+            disabled={Boolean(busy())}
+            onInput={(event) => {
+              setEditorHex(event.currentTarget.value.toUpperCase());
+              editCategory({ color: event.currentTarget.value.toUpperCase() });
+            }}
+          />
+          <input
+            class="category-editor-hex"
+            aria-label="HEX color"
+            value={editorHex()}
+            maxlength={7}
+            aria-invalid={editorHexInvalid() ? "true" : "false"}
+            aria-describedby={editorHexInvalid() ? "category-hex-error" : undefined}
+            disabled={Boolean(busy())}
+            spellcheck={false}
+            onInput={(event) => editHex(event.currentTarget.value)}
+            onBlur={() => setEditorHex(editedCategory()?.color ?? "")}
+          />
+          <button aria-label="Close category editor" onClick={closeCategoryEditor}>
+            ×
+          </button>
+        </div>
+        <Show when={editorHexInvalid()}>
+          <small class="danger" id="category-hex-error">
+            Use #RGB or #RRGGBB.
+          </small>
+        </Show>
+        <fieldset class="category-editor-patterns">
+          <legend>
+            Pattern <strong>{PATTERN_LABELS[editedCategory()?.pattern ?? "lines"]}</strong>
+          </legend>
+          <div class="pattern-choices">
+            <For each={PATTERN_TYPES}>
+              {(type) => (
+                <button
+                  type="button"
+                  aria-label={PATTERN_LABELS[type]}
+                  title={PATTERN_LABELS[type]}
+                  aria-pressed={editedCategory()?.pattern === type ? "true" : "false"}
+                  disabled={Boolean(busy())}
+                  onClick={() => editCategory({ pattern: type })}
+                >
+                  <img src={patternPreviewUrl(type, theme().patternPreview)} alt="" />
+                </button>
+              )}
+            </For>
+          </div>
+        </fieldset>
+        <div class="category-editor-sliders">
+          <label>
+            <span>
+              Angle <strong>{editedCategory()?.angle ?? 0}°</strong>
+            </span>
+            <input
+              type="range"
+              aria-label="Pattern angle"
+              min="-180"
+              max="180"
+              step="1"
+              value={editedCategory()?.angle ?? 0}
+              aria-valuetext={`${editedCategory()?.angle ?? 0} degrees`}
+              disabled={Boolean(busy())}
+              onInput={(event) => editPatternNumber("angle", event.currentTarget)}
+            />
+          </label>
+          <label>
+            <span>
+              Spacing <strong>{editedCategory()?.size ?? 8}px</strong>
+            </span>
+            <input
+              type="range"
+              aria-label="Pattern spacing"
+              min="6"
+              max="24"
+              step="1"
+              value={editedCategory()?.size ?? 8}
+              aria-valuetext={`${editedCategory()?.size ?? 8} pixels`}
+              disabled={Boolean(busy())}
+              onInput={(event) => editPatternNumber("size", event.currentTarget)}
+            />
+          </label>
+          <label>
+            <span>
+              Thickness <strong>{editedCategory()?.strokeWidth ?? 1}px</strong>
+            </span>
+            <input
+              type="range"
+              aria-label="Pattern thickness"
+              min="0.5"
+              max="3"
+              step="0.1"
+              value={editedCategory()?.strokeWidth ?? 1}
+              aria-valuetext={`${editedCategory()?.strokeWidth ?? 1} pixels`}
+              disabled={Boolean(busy())}
+              onInput={(event) => editPatternNumber("strokeWidth", event.currentTarget)}
+            />
+          </label>
+        </div>
+        <div class="category-editor-randomize">
+          <button disabled={Boolean(busy())} onClick={() => void randomizeEditedCategory("color")}>
+            Randomize color
+          </button>
+          <button
+            disabled={Boolean(busy())}
+            onClick={() => void randomizeEditedCategory("pattern")}
+          >
+            Randomize pattern
+          </button>
+        </div>
+        <small>Changes preview instantly. Save to keep them.</small>
+      </div>
       <main>
         <Show when={error()}>
           <div class="notice error" role="alert">
@@ -774,133 +994,143 @@ export function App(props: PageProps & { projectName: string }): Element {
             </div>
           }
         >
-          {(current) => (
-            <>
-              <header class="toolbar">
-                <div>
-                  <span class="eyebrow">
-                    Palette preview · {current().categories.length} colors
-                  </span>
-                  <h2>{current().name}</h2>
-                </div>
-                <div class="actions">
-                  <button disabled={Boolean(busy())} onClick={() => void generate(current())}>
-                    Regenerate colors + patterns
-                  </button>
-                  <button disabled={Boolean(busy())} onClick={rerollPatterns}>
-                    Regenerate patterns
-                  </button>
-                </div>
-              </header>
-              <section class="panel">
-                <div class="panel-heading">
-                  <h3>Stacked bars</h3>
-                  <span>Proportional / equal width · thin bars</span>
-                </div>
-                <Preview
-                  palette={current()}
-                  lighten={data().patternLighten}
-                  text={theme().text}
-                  muted={theme().muted}
-                  chart="stack"
-                />
-              </section>
-              <div class="chart-grid">
+          {(current) => {
+            const content = createMemo(() => (
+              <>
+                <header class="toolbar">
+                  <div>
+                    <span class="eyebrow">
+                      Palette preview · {current().categories.length} colors
+                    </span>
+                    <h2>{current().name}</h2>
+                  </div>
+                  <div class="actions">
+                    <button disabled={Boolean(busy())} onClick={() => void generate(current())}>
+                      Regenerate colors + patterns
+                    </button>
+                    <button disabled={Boolean(busy())} onClick={rerollPatterns}>
+                      Regenerate patterns
+                    </button>
+                  </div>
+                </header>
                 <section class="panel">
                   <div class="panel-heading">
-                    <h3>Bar chart</h3>
-                    <span>Sample values</span>
+                    <h3>Stacked bars</h3>
+                    <span>Proportional / equal width · thin bars</span>
                   </div>
                   <Preview
                     palette={current()}
                     lighten={data().patternLighten}
                     text={theme().text}
                     muted={theme().muted}
-                    chart="bars"
+                    chart="stack"
                   />
                 </section>
+                <div class="chart-grid">
+                  <section class="panel">
+                    <div class="panel-heading">
+                      <h3>Bar chart</h3>
+                      <span>Sample values</span>
+                    </div>
+                    <Preview
+                      palette={current()}
+                      lighten={data().patternLighten}
+                      text={theme().text}
+                      muted={theme().muted}
+                      chart="bars"
+                    />
+                  </section>
+                  <section class="panel">
+                    <div class="panel-heading">
+                      <h3>Donut chart</h3>
+                    </div>
+                    <Preview
+                      palette={current()}
+                      lighten={data().patternLighten}
+                      text={theme().text}
+                      muted={theme().muted}
+                      chart="donut"
+                    />
+                  </section>
+                </div>
                 <section class="panel">
                   <div class="panel-heading">
-                    <h3>Donut chart</h3>
+                    <h3>Colors and patterns</h3>
+                    <span>Compare at legend size</span>
                   </div>
-                  <Preview
-                    palette={current()}
-                    lighten={data().patternLighten}
-                    text={theme().text}
-                    muted={theme().muted}
-                    chart="donut"
-                  />
-                </section>
-              </div>
-              <section class="panel">
-                <div class="panel-heading">
-                  <h3>Colors and patterns</h3>
-                  <span>Compare at legend size</span>
-                </div>
-                <div class="swatches">
-                  <For each={current().categories}>
-                    {(category, index) => (
-                      <div class="swatch">
-                        <button
-                          class="swatch-image"
-                          disabled={Boolean(busy())}
-                          aria-label={`Randomize color for Category ${index() + 1}`}
-                          title="Randomize color"
-                          onClick={() => void rerollCategory(index(), "color")}
-                        >
-                          <img src={swatchUrl(category, data().patternLighten)} alt="" />
-                        </button>
-                        <div class="swatch-details">
+                  <div class="swatches">
+                    <For each={current().categories}>
+                      {(category, index) => (
+                        <div class="swatch">
                           <button
+                            class="swatch-image"
+                            data-category-index={index()}
                             disabled={Boolean(busy())}
-                            aria-label={`Randomize color and pattern for Category ${index() + 1}`}
-                            title="Randomize color and pattern"
-                            onClick={() => void rerollCategory(index(), "both")}
+                            aria-label={`Edit color and pattern for Category ${index() + 1}`}
+                            title="Edit color and pattern"
+                            aria-controls="category-editor"
+                            aria-expanded={editingCategory() === index() ? "true" : "false"}
+                            onClick={() => openCategoryEditor(index())}
                           >
-                            <strong>Category {index() + 1}</strong>
+                            <img src={swatchUrl(category, data().patternLighten)} alt="" />
                           </button>
-                          <button
-                            disabled={Boolean(busy())}
-                            aria-label={`Randomize color for Category ${index() + 1}`}
-                            title="Randomize color"
-                            onClick={() => void rerollCategory(index(), "color")}
-                          >
-                            <code>{category.color}</code>
-                          </button>
-                          <button
-                            disabled={Boolean(busy())}
-                            aria-label={`Randomize pattern for Category ${index() + 1}`}
-                            title="Randomize pattern"
-                            onClick={() => void rerollCategory(index(), "pattern")}
-                          >
-                            <small>{PATTERN_LABELS[category.pattern]}</small>
-                          </button>
+                          <div class="swatch-details">
+                            <button
+                              disabled={Boolean(busy())}
+                              aria-label={`Randomize color and pattern for Category ${index() + 1}`}
+                              title="Randomize color and pattern"
+                              onClick={() => void rerollCategory(index(), "both")}
+                            >
+                              <strong>Category {index() + 1}</strong>
+                            </button>
+                            <button
+                              disabled={Boolean(busy())}
+                              aria-label={`Edit color and pattern for Category ${index() + 1}`}
+                              title="Edit color and pattern"
+                              aria-controls="category-editor"
+                              aria-expanded={editingCategory() === index() ? "true" : "false"}
+                              onClick={() => openCategoryEditor(index())}
+                            >
+                              <code>{category.color}</code>
+                            </button>
+                            <button
+                              disabled={Boolean(busy())}
+                              aria-label={`Edit pattern for Category ${index() + 1}`}
+                              title="Edit pattern"
+                              aria-controls="category-editor"
+                              aria-expanded={editingCategory() === index() ? "true" : "false"}
+                              onClick={() => openCategoryEditor(index())}
+                            >
+                              <small>{PATTERN_LABELS[category.pattern]}</small>
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </For>
-                </div>
-              </section>
-              <details class="manage">
-                <summary>Rename or delete palette</summary>
-                <div>
-                  <input
-                    aria-label="New palette name"
-                    value={rename()}
-                    onInput={(event) => setRename(event.currentTarget.value)}
-                    disabled={Boolean(busy())}
-                  />
-                  <button onClick={renamePalette} disabled={Boolean(busy())}>
-                    Rename
-                  </button>
-                  <button class="danger" onClick={remove} disabled={Boolean(busy())}>
-                    Delete palette
-                  </button>
-                </div>
-                <p>SVG exports reflect palette renames and deletions.</p>
-              </details>
-            </>
-          )}
+                      )}
+                    </For>
+                  </div>
+                </section>
+                <details class="manage">
+                  <summary>Rename or delete palette</summary>
+                  <div>
+                    <input
+                      aria-label="New palette name"
+                      value={rename()}
+                      onInput={(event) => setRename(event.currentTarget.value)}
+                      disabled={Boolean(busy())}
+                    />
+                    <button onClick={renamePalette} disabled={Boolean(busy())}>
+                      Rename
+                    </button>
+                    <button class="danger" onClick={remove} disabled={Boolean(busy())}>
+                      Delete palette
+                    </button>
+                  </div>
+                  <p>SVG exports reflect palette renames and deletions.</p>
+                </details>
+              </>
+            ));
+            return <>{content()}</>;
+          }}
         </Show>
       </main>
     </div>

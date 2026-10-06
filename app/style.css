@@ -50,6 +50,22 @@ input {
     accent-color: var(--accent);
   }
 }
+input[type="color"] {
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  &::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+  &::-webkit-color-swatch {
+    border: 0;
+    border-radius: inherit;
+  }
+  &::-moz-color-swatch {
+    border: 0;
+    border-radius: inherit;
+  }
+}
 h1,
 h2,
 h3,
@@ -581,8 +597,6 @@ main {
 
 .background-setting input[type="color"] {
   height: 36px;
-  padding: 3px;
-  cursor: pointer;
 }
 .background-notice {
   padding: 18px 22px;
@@ -966,4 +980,114 @@ textarea:focus-visible {
   overflow: auto;
   padding: 4px;
   margin: 0 -4px 14px;
+}
+
+.category-editor {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 32px #0005;
+  &:popover-open {
+    display: grid;
+    gap: 10px;
+  }
+  & small {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+}
+.category-editor-color {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 36px;
+  gap: 8px;
+  align-items: stretch;
+  & input,
+  & button {
+    height: 40px;
+  }
+  & .category-editor-hex {
+    width: calc(7ch + 14px);
+    padding: 0 6px;
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+    text-align: center;
+  }
+  & button {
+    padding: 0;
+    font-size: 20px;
+  }
+}
+.category-editor-patterns {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  & legend {
+    width: 100%;
+    padding: 0;
+    margin-bottom: 8px;
+    font-size: 12px;
+    & strong {
+      float: right;
+      color: var(--muted);
+      font-weight: 500;
+    }
+  }
+}
+.pattern-choices {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  & button {
+    display: grid;
+    aspect-ratio: 1;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    &[aria-pressed="true"] {
+      border-color: var(--accent);
+      box-shadow: inset 0 0 0 1px var(--accent);
+    }
+  }
+  & img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+  }
+}
+.category-editor-sliders {
+  display: grid;
+  gap: 12px;
+  & label > span {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  & strong {
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+  & input {
+    width: 100%;
+  }
+}
+.category-editor-randomize {
+  display: flex;
+  gap: 8px;
+  & button {
+    flex: 1;
+    padding: 8px 6px;
+    font-size: 11px;
+  }
 }

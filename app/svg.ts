@@ -37,9 +37,16 @@ export function patternColor(color: string, lighten: number): string {
   return `#${channels.join("")}`;
 }
 
-export function patternSvg(category: Category, id: string, lighten: number): string {
+export function patternSvg(
+  category: Category,
+  id: string,
+  lighten: number,
+  appearance?: { background: string; foreground: string },
+): string {
   const { size: s, strokeWidth: w, color, pattern, angle } = category;
   const h = s / 2;
+  const foreground = appearance?.foreground ?? patternColor(color, lighten);
+  const background = appearance?.background ?? color;
   let shape: string;
   switch (pattern) {
     case "lines": {
@@ -47,7 +54,7 @@ export function patternSvg(category: Category, id: string, lighten: number): str
       break;
     }
     case "dots": {
-      shape = `<circle cx="${h}" cy="${h}" r="${w * 1.3}" fill="${patternColor(color, lighten)}" stroke="none"/>`;
+      shape = `<circle cx="${h}" cy="${h}" r="${w * 1.3}" fill="${foreground}" stroke="none"/>`;
       break;
     }
     case "rings": {
@@ -71,7 +78,7 @@ export function patternSvg(category: Category, id: string, lighten: number): str
       break;
     }
   }
-  return `<pattern id="${id}" width="${s}" height="${s}" patternUnits="userSpaceOnUse" patternTransform="rotate(${angle})"><rect width="${s}" height="${s}" fill="${color}"/><g fill="none" stroke="${patternColor(color, lighten)}" stroke-width="${w}">${shape}</g></pattern>`;
+  return `<pattern id="${id}" width="${s}" height="${s}" patternUnits="userSpaceOnUse" patternTransform="rotate(${angle})"><rect width="${s}" height="${s}" fill="${background}"/><g fill="none" stroke="${foreground}" stroke-width="${w}">${shape}</g></pattern>`;
 }
 
 export function paletteSvg(palette: Palette, lighten: number): string {
@@ -89,6 +96,12 @@ export function paletteSvg(palette: Palette, lighten: number): string {
 
 export function swatchUrl(category: Category, lighten: number): string {
   return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><defs>${patternSvg(category, "swatch", lighten)}</defs><rect width="64" height="64" fill="url(#swatch)"/></svg>`)}`;
+}
+
+export function patternPreviewUrl(pattern: PatternType, color: string): string {
+  const category: Category = { pattern, color: "#000000", size: 12, strokeWidth: 1.2, angle: 0 };
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><defs>${patternSvg(category, "preview", 0, { background: "none", foreground: color })}</defs><rect width="64" height="64" fill="url(#preview)"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 export function categoryImageSvg(category: Category, lighten: number): string {

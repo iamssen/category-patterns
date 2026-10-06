@@ -11,7 +11,7 @@ Compare them in bar, stacked bar, and donut previews, then export SVG assets for
 
 - Create palettes with the number of colors you need. Regenerate colors and patterns together, or patterns alone.
 - Use the options button beside **Create palette** to create a palette from 1–20 HEX colors in your preferred order. Separate codes with spaces, tabs, line breaks, commas, or semicolons; `#RGB` and `#RRGGBB` work with or without `#`.
-- Adjust individual categories: click the category name for a new color and pattern, the swatch or HEX value for a new color, or the pattern name for a new pattern.
+- Click a swatch, HEX value, or pattern name to edit its color, pattern, angle, spacing, and thickness in a floating panel with instant previews. Choose patterns from preview buttons and adjust angle, spacing, and thickness with sliders. Randomize colors or patterns from the panel, or click the category name to randomize both.
 - Tune pattern brightness, background color, and the lightness and contrast of newly generated colors.
 - Keep separate projects, starting from Dark or Light samples. Use the **Project** button to switch or create projects.
 

@@ -51,7 +51,9 @@ export function createTheme(background: string) {
   const muted = readable(mix(background, foreground, 0.55), 4.5);
   const accent = readable(dark ? "#b4d9a6" : "#315925", 4.5);
   const danger = readable(dark ? "#f6a7a7" : "#a02121", 4.5);
+  const border = readable(mix(background, foreground, 0.3), 3);
   return {
+    patternPreview: mix(border, "#ffffff", 0.18),
     text,
     muted,
     style: {
@@ -60,7 +62,7 @@ export function createTheme(background: string) {
       "--hover": hover,
       "--text": text,
       "--muted": muted,
-      "--border": readable(mix(background, foreground, 0.3), 3),
+      "--border": border,
       "--accent": accent,
       "--on-accent":
         contrast(accent, "#000000") > contrast(accent, "#ffffff") ? "#000000" : "#ffffff",
