@@ -28,9 +28,15 @@ function routeProject(route: string): string | undefined {
 }
 export function Workspace(): Element {
   const [route, setRoute] = createSignal(currentRoute());
-  const [pending, setPending] = createSignal<string | undefined>();
+  const [pending, setPending] = createSignal<
+    { type: "navigate"; route: string } | { type: "refresh" } | undefined
+  >();
   const [saving, setSaving] = createSignal(false);
   const [guardError, setGuardError] = createSignal("");
+  const [needRefresh, setNeedRefresh] = createSignal(false);
+  const [refreshing, setRefreshing] = createSignal(false);
+  let updateSW: (() => Promise<void>) | undefined;
+  let updateActivated = false;
   let guard: NavigationGuard | undefined;
   let dialog: HTMLDialogElement | undefined;
   let historyIndex =
@@ -76,7 +82,7 @@ export function Workspace(): Element {
       return;
     }
     if (guard?.dirty()) {
-      setPending(next);
+      setPending({ type: "navigate", route: next });
       setGuardError("");
       if (!dialog?.open) dialog?.showModal();
     } else commit(next);
@@ -86,17 +92,88 @@ export function Workspace(): Element {
     setPending(undefined);
     dialog?.close();
   }
+  async function refreshApp(): Promise<void> {
+    if (refreshing()) return;
+    setPending(undefined);
+    dialog?.close();
+    setGuardError("");
+    setRefreshing(true);
+    if (updateActivated) {
+      window.location.reload();
+      return;
+    }
+    try {
+      await updateSW?.();
+    } catch {
+      setRefreshing(false);
+      setGuardError("Could not update the app. Please try again.");
+    }
+  }
+  function requestRefresh(): void {
+    if (refreshing() || pending()) return;
+    if (guard?.busy()) {
+      setGuardError("Please wait for the current operation to finish.");
+      return;
+    }
+    if (guard?.dirty()) {
+      setPending({ type: "refresh" });
+      setGuardError("");
+      dialog?.showModal();
+    } else void refreshApp();
+  }
   async function saveAndLeave(): Promise<void> {
     if (saving()) return;
     setSaving(true);
     try {
-      if (await guard?.save()) commit(pending()!);
-      else setGuardError("Changes could not be saved. Close this dialog to review the error.");
+      if (await guard?.save()) {
+        const action = pending();
+        if (action?.type === "refresh") await refreshApp();
+        else if (action) commit(action.route);
+      } else setGuardError("Changes could not be saved. Close this dialog to review the error.");
     } finally {
       setSaving(false);
     }
   }
   onSettled(() => {
+    let disposed = false;
+    let controlled = Boolean(navigator.serviceWorker?.controller);
+    let registration: ServiceWorkerRegistration | undefined;
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const checkUpdate = () => {
+      if (document.visibilityState === "visible" && navigator.onLine && !registration?.installing)
+        void registration?.update().catch(() => {
+          /* Try again when online or focused. */
+        });
+    };
+    const controllerChanged = () => {
+      const isUpdate = controlled || needRefresh();
+      controlled = true;
+      if (!isUpdate) return;
+      updateActivated = true;
+      if (refreshing()) window.location.reload();
+      else setNeedRefresh(true);
+    };
+    if (import.meta.env.PROD && import.meta.env.MODE === "web") {
+      void import("virtual:pwa-register").then(({ registerSW }) => {
+        if (disposed) return;
+        updateSW = registerSW({
+          immediate: true,
+          onNeedRefresh: () => setNeedRefresh(true),
+          // Handle controllerchange directly, including updates in a first-visit tab.
+          onNeedReload: () => {},
+          onRegisteredSW: (_url, value) => {
+            if (disposed) return;
+            registration = value;
+            checkUpdate();
+            interval = setInterval(checkUpdate, 60 * 60 * 1000);
+          },
+        });
+      });
+      window.addEventListener("focus", checkUpdate);
+      window.addEventListener("online", checkUpdate);
+      document.addEventListener("visibilitychange", checkUpdate);
+      navigator.serviceWorker?.addEventListener("controllerchange", controllerChanged);
+    }
     const changed = () => {
       const next = currentRoute();
       if (restoring) {
@@ -130,6 +207,12 @@ export function Workspace(): Element {
     };
     window.addEventListener("hashchange", hashChanged);
     return () => {
+      disposed = true;
+      clearInterval(interval);
+      window.removeEventListener("focus", checkUpdate);
+      window.removeEventListener("online", checkUpdate);
+      document.removeEventListener("visibilitychange", checkUpdate);
+      navigator.serviceWorker?.removeEventListener("controllerchange", controllerChanged);
       window.removeEventListener("popstate", changed);
       window.removeEventListener("hashchange", hashChanged);
     };
@@ -165,7 +248,11 @@ export function Workspace(): Element {
         }}
       >
         <h2>Save your changes?</h2>
-        <p>You have unsaved changes. Save them before leaving this page, or discard them.</p>
+        <p>
+          {pending()?.type === "refresh"
+            ? "Save your changes before refreshing the app."
+            : "You have unsaved changes. Save them before leaving this page, or discard them."}
+        </p>
         <Show when={guardError()}>
           <p class="danger" role="alert">
             {guardError()}
@@ -175,14 +262,30 @@ export function Workspace(): Element {
           <button disabled={saving()} onClick={cancel}>
             Cancel
           </button>
-          <button disabled={saving()} onClick={() => commit(pending()!)}>
-            Discard
-          </button>
+          <Show when={pending()?.type === "navigate"}>
+            <button
+              disabled={saving()}
+              onClick={() => {
+                const action = pending();
+                if (action?.type === "navigate") commit(action.route);
+              }}
+            >
+              Discard
+            </button>
+          </Show>
           <button class="primary" disabled={saving()} onClick={() => void saveAndLeave()}>
-            {saving() ? "Saving…" : "Save"}
+            {saving() ? "Saving…" : pending()?.type === "refresh" ? "Save and refresh" : "Save"}
           </button>
         </div>
       </dialog>
+      <Show when={needRefresh()}>
+        <div class="pwa-update" role="status" style={createTheme(DEFAULT_BACKGROUND).style}>
+          <span>A new version is available.</span>
+          <button class="primary" disabled={refreshing()} onClick={requestRefresh}>
+            {refreshing() ? "Refreshing…" : "Refresh app"}
+          </button>
+        </div>
+      </Show>
       <Show when={guardError() && !pending()}>
         <div class="navigation-notice" role="status">
           {guardError()} <button onClick={() => setGuardError("")}>Dismiss</button>

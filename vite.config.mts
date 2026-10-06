@@ -19,7 +19,7 @@ export default defineConfig(async ({ command, mode }) => {
     plugins.push(
       VitePWA({
         registerType: "prompt",
-        injectRegister: "script-defer",
+        injectRegister: false,
         includeAssets: ["icon-180.png", "icon-192.png", "icon-512.png"],
         manifest: {
           id: "./",
@@ -40,6 +40,7 @@ export default defineConfig(async ({ command, mode }) => {
         workbox: {
           globPatterns: ["**/*.{js,css,html,png}"],
           cleanupOutdatedCaches: true,
+          clientsClaim: true,
         },
       }),
     );

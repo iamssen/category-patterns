@@ -32,7 +32,8 @@ and individual pattern SVGs for CSS backgrounds.
 
 You can install the Web app from your browser's app menu or **Add to Home Screen**.
 Open it once online, then continue editing and downloading SVGs offline.
-Updates apply after you close all app tabs and windows and reopen the app.
+When a new version is available, choose **Refresh app** to update.
+If you have unsaved changes, save them before refreshing.
 
 ## Use the Local App
 

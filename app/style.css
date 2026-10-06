@@ -949,6 +949,23 @@ textarea:focus-visible {
   border-radius: 8px;
   z-index: 5;
 }
+.pwa-update {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  max-width: calc(100% - 40px);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 4px 24px #0004;
+  z-index: 4;
+}
 @media (width < 850px) {
   .projects-layout {
     grid-template-columns: minmax(0, 1fr) 300px;
@@ -1248,6 +1265,9 @@ textarea:focus-visible {
 @media (width < 700px) {
   .app main {
     padding-bottom: 210px;
+  }
+  .pwa-update {
+    bottom: calc(140px + env(safe-area-inset-bottom));
   }
   .sidebar footer {
     position: fixed;
