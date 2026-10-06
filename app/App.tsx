@@ -201,7 +201,9 @@ export function App(props: PageProps & { projectName: string }): Element {
     try {
       const nextName = checkName(name());
       const tokens = colorCodes()
-        .split(/[\s,;]+/u)
+        .replace(/[^#0-9a-z]+/gi, " ")
+        .trim()
+        .split(/\s+/u)
         .filter(Boolean);
       if (tokens.length < 1 || tokens.length > 20)
         throw new Error("Enter between 1 and 20 colors.");
@@ -604,8 +606,8 @@ export function App(props: PageProps & { projectName: string }): Element {
                 required
               />
               <small id="color-codes-hint">
-                1–20 HEX colors (#RGB or #RRGGBB; # is optional). Separate with spaces, tabs, line
-                breaks, commas or semicolons.
+                1–20 HEX colors (#RGB or #RRGGBB; # is optional). Separate with whitespace or
+                punctuation, such as commas, quotes or brackets.
               </small>
             </label>
           </div>
