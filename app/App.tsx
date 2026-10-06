@@ -20,6 +20,11 @@ export function App(props: PageProps & { projectName: string }): Element {
   const [selected, setSelected] = createSignal("");
   const [name, setName] = createSignal("scheme8");
   const [count, setCount] = createSignal(8);
+  const [createOptionsOpen, setCreateOptionsOpen] = createSignal(false);
+  const [colorCodes, setColorCodes] = createSignal("");
+  const [colorCodesError, setColorCodesError] = createSignal("");
+  let createActions: HTMLDivElement | undefined;
+  let colorCodesDialog: HTMLDialogElement | undefined;
   const [rename, setRename] = createSignal("");
   const [busy, setBusy] = createSignal("");
   const [loaded, setLoaded] = createSignal(false);
@@ -78,11 +83,17 @@ export function App(props: PageProps & { projectName: string }): Element {
     const unregister = props.registerGuard({ dirty, busy: () => Boolean(busy()), save });
     void load();
     window.addEventListener("beforeunload", beforeUnload);
+    const dismissOptions = (event: PointerEvent) => {
+      if (event.target instanceof Node && !createActions?.contains(event.target))
+        setCreateOptionsOpen(false);
+    };
+    window.addEventListener("pointerdown", dismissOptions);
     return () => {
       disposed = true;
       unregister();
       worker?.terminate();
       window.removeEventListener("beforeunload", beforeUnload);
+      window.removeEventListener("pointerdown", dismissOptions);
     };
   });
 
@@ -156,6 +167,37 @@ export function App(props: PageProps & { projectName: string }): Element {
       setError(error_ instanceof Error ? error_.message : "Generation failed.");
     } finally {
       setBusy("");
+    }
+  }
+  function createFromColorCodes(): void {
+    if (busy() || !loaded()) return;
+    setColorCodesError("");
+    try {
+      const nextName = checkName(name());
+      const tokens = colorCodes()
+        .split(/[\s,;]+/u)
+        .filter(Boolean);
+      if (tokens.length < 1 || tokens.length > 20)
+        throw new Error("Enter between 1 and 20 colors.");
+      const colors = tokens.map((token) => {
+        const hex = token.replace(/^#/, "");
+        if (!/^(?:[\da-f]{3}|[\da-f]{6})$/i.test(hex))
+          throw new Error(`Invalid color: ${token}. Use HEX codes such as #ABC or #AABBCC.`);
+        return `#${hex.length === 3 ? [...hex].map((digit) => digit + digit).join("") : hex}`.toUpperCase();
+      });
+      const next: Palette = {
+        id: crypto.randomUUID(),
+        name: nextName,
+        categories: randomCategories(colors),
+      };
+      change({ ...data(), palettes: [...data().palettes, next] });
+      select(next);
+      setCount(colors.length);
+      setError("");
+      setColorCodes("");
+      colorCodesDialog?.close();
+    } catch (error_) {
+      setColorCodesError(error_ instanceof Error ? error_.message : "Failed to create palette.");
     }
   }
   function renamePalette(): void {
@@ -327,9 +369,46 @@ export function App(props: PageProps & { projectName: string }): Element {
               disabled={Boolean(busy())}
             />
           </label>
-          <button type="submit" disabled={!loaded() || Boolean(busy())}>
-            ＋ Create palette
-          </button>
+          <div
+            class="create-actions"
+            ref={(element) => {
+              createActions = element;
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setCreateOptionsOpen(false);
+            }}
+          >
+            <div class="create-button-group" role="group" aria-label="Create palette">
+              <button type="submit" disabled={!loaded() || Boolean(busy())}>
+                ＋ Create palette
+              </button>
+              <button
+                type="button"
+                class="create-options-button"
+                aria-label="Palette creation options"
+                aria-expanded={createOptionsOpen() ? "true" : "false"}
+                aria-controls="palette-creation-options"
+                disabled={!loaded() || Boolean(busy())}
+                onClick={() => setCreateOptionsOpen((open) => !open)}
+              >
+                <span aria-hidden="true">▾</span>
+              </button>
+            </div>
+            <Show when={createOptionsOpen()}>
+              <div class="create-options" id="palette-creation-options">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateOptionsOpen(false);
+                    setColorCodesError("");
+                    colorCodesDialog?.showModal();
+                  }}
+                >
+                  Create from color codes…
+                </button>
+              </div>
+            </Show>
+          </div>
         </form>
         <nav aria-label="Palette list">
           <div class="list-heading">
@@ -380,6 +459,64 @@ export function App(props: PageProps & { projectName: string }): Element {
           <small>{connector.description}</small>
         </footer>
       </aside>
+      <dialog
+        class="project-dialog color-codes-dialog"
+        ref={(element) => {
+          colorCodesDialog = element;
+        }}
+        aria-labelledby="color-codes-title"
+      >
+        <h2 id="color-codes-title">Create from color codes</h2>
+        <p>Use your colors in the order entered, with randomly generated patterns.</p>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            createFromColorCodes();
+          }}
+        >
+          <div class="export-fields">
+            <label>
+              Palette name
+              <input
+                value={name()}
+                onInput={(event) => setName(event.currentTarget.value)}
+                maxlength={64}
+                required
+              />
+            </label>
+            <label>
+              Color codes
+              <textarea
+                value={colorCodes()}
+                onInput={(event) => setColorCodes(event.currentTarget.value)}
+                rows={6}
+                placeholder={"#F87171, #FBBF24\n#34D399 #60A5FA"}
+                aria-describedby="color-codes-hint"
+                aria-invalid={colorCodesError() ? "true" : "false"}
+                spellcheck={false}
+                required
+              />
+              <small id="color-codes-hint">
+                1–20 HEX colors (#RGB or #RRGGBB; # is optional). Separate with spaces, tabs, line
+                breaks, commas or semicolons.
+              </small>
+            </label>
+          </div>
+          <Show when={colorCodesError()}>
+            <div class="notice error" role="alert">
+              {colorCodesError()}
+            </div>
+          </Show>
+          <div class="dialog-actions">
+            <button type="button" onClick={() => colorCodesDialog?.close()}>
+              Cancel
+            </button>
+            <button type="submit" class="primary">
+              Create palette
+            </button>
+          </div>
+        </form>
+      </dialog>
       <main>
         <Show when={error()}>
           <div class="notice error" role="alert">

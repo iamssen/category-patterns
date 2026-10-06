@@ -142,8 +142,47 @@ label {
   font-size: 12px;
   color: var(--text);
 }
-.create button {
+.create-actions {
   grid-column: 1 / -1;
+  position: relative;
+}
+.create-button-group {
+  display: flex;
+  & button {
+    flex: 1;
+    border-radius: 7px 0 0 7px;
+    &:focus-visible {
+      position: relative;
+      z-index: 1;
+    }
+  }
+  & .create-options-button {
+    flex: 0 0 40px;
+    border-radius: 0 7px 7px 0;
+    margin-left: -1px;
+    padding-inline: 8px;
+  }
+}
+.create-options {
+  position: absolute;
+  top: calc(100% + 6px);
+  inset-inline: 0;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px #0003;
+  z-index: 2;
+  & button {
+    width: 100%;
+    border-color: transparent;
+    text-align: left;
+    font-size: 12px;
+  }
+}
+.color-codes-dialog textarea {
+  font-family: ui-monospace, monospace;
+  resize: vertical;
 }
 nav {
   flex: 1;
