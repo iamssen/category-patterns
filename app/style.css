@@ -1110,3 +1110,37 @@ textarea:focus-visible {
 .project-card-actions button {
   font-size: 12px;
 }
+
+.swatch-details {
+  min-width: 0;
+}
+.swatch-add {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  &:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+}
+.category-editor-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-color: var(--danger);
+  background: transparent;
+  font-size: 11px;
+  & svg {
+    flex-shrink: 0;
+  }
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+  }
+}

@@ -380,6 +380,47 @@ export function App(props: PageProps & { projectName: string }): Element {
       setBusy("");
     }
   }
+  async function addCategory(): Promise<void> {
+    const item = palette();
+    if (!item || busy() || item.categories.length >= 20) return;
+    closeCategoryEditor();
+    setError("");
+    setBusy("Adding color and pattern…");
+    try {
+      const index = item.categories.length;
+      const colors = await generateColors({
+        colors: [...item.categories.map((category) => category.color), "#808080"],
+        index,
+      });
+      const category = randomCategories([colors[index]], data().generation)[0];
+      change({
+        ...data(),
+        palettes: data().palettes.map((value) =>
+          value.id === item.id ? { ...value, categories: [...value.categories, category] } : value,
+        ),
+      });
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : "Failed to add color and pattern.");
+    } finally {
+      setBusy("");
+    }
+  }
+  function removeCategory(index: number): void {
+    const item = palette();
+    if (!item || busy() || item.categories.length <= 1) return;
+    closeCategoryEditor();
+    change({
+      ...data(),
+      palettes: data().palettes.map((value) =>
+        value.id === item.id
+          ? {
+              ...value,
+              categories: value.categories.filter((_, entryIndex) => entryIndex !== index),
+            }
+          : value,
+      ),
+    });
+  }
   async function save(): Promise<boolean> {
     if (busy() || !loaded() || !project) return false;
     if (!dirty()) return true;
@@ -760,6 +801,34 @@ export function App(props: PageProps & { projectName: string }): Element {
             Randomize pattern
           </button>
         </div>
+        <button
+          class="category-editor-delete danger"
+          disabled={Boolean(busy()) || (palette()?.categories.length ?? 0) <= 1}
+          title={
+            (palette()?.categories.length ?? 0) <= 1
+              ? "Keep at least one color"
+              : "Delete color and pattern"
+          }
+          onClick={() => {
+            const index = editingCategory();
+            if (index !== undefined) removeCategory(index);
+          }}
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />
+          </svg>
+          Delete color and pattern
+        </button>
         <small>Changes preview instantly. Save to keep them.</small>
       </div>
       <main>
@@ -1251,7 +1320,6 @@ export function App(props: PageProps & { projectName: string }): Element {
                 <section class="panel">
                   <div class="panel-heading">
                     <h3>Colors and patterns</h3>
-                    <span>Compare at legend size</span>
                   </div>
                   <div class="swatches">
                     <For each={current().categories}>
@@ -1302,6 +1370,32 @@ export function App(props: PageProps & { projectName: string }): Element {
                         </div>
                       )}
                     </For>
+                    <div class="swatch">
+                      <button
+                        class="swatch-add"
+                        aria-label="Add color and pattern"
+                        disabled={Boolean(busy()) || current().categories.length >= 20}
+                        title={
+                          current().categories.length >= 20
+                            ? "Maximum 20 colors"
+                            : "Add color and pattern"
+                        }
+                        onClick={() => void addCategory()}
+                      >
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          width="20"
+                          height="20"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.5"
+                          stroke-linecap="round"
+                        >
+                          <path d="M12 5v14M5 12h14" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </section>
                 <details class="manage">
