@@ -1,5 +1,5 @@
-import { PATTERN_TYPES } from "./model.ts";
-import type { Category, Palette, PaletteData, PatternType } from "./model.ts";
+import { DEFAULT_GENERATION_SETTINGS, PATTERN_TYPES } from "./model.ts";
+import type { Category, Palette, PaletteData, PatternType, GenerationSettings } from "./model.ts";
 
 export const PATTERN_LABELS: Record<PatternType, string> = {
   lines: "Lines",
@@ -11,7 +11,15 @@ export const PATTERN_LABELS: Record<PatternType, string> = {
   chevrons: "Chevrons",
 };
 
-export function randomCategories(colors: string[]): Category[] {
+export function randomCategories(
+  colors: string[],
+  settings: GenerationSettings = DEFAULT_GENERATION_SETTINGS,
+): Category[] {
+  function randomValue(range: [number, number], scale: number): number {
+    const min = Math.round(range[0] * scale);
+    const max = Math.round(range[1] * scale);
+    return (min + Math.floor(Math.random() * (max - min + 1))) / scale;
+  }
   let previous: PatternType | undefined;
   return colors.map((color) => {
     const choices = PATTERN_TYPES.filter((type) => type !== previous);
@@ -20,8 +28,8 @@ export function randomCategories(colors: string[]): Category[] {
     return {
       color,
       pattern,
-      size: [8, 10, 12, 16][Math.floor(Math.random() * 4)],
-      strokeWidth: [0.8, 1, 1.4][Math.floor(Math.random() * 3)],
+      size: randomValue(settings.patternSpacing, 1),
+      strokeWidth: randomValue(settings.patternThickness, 10),
       angle: [0, 45, 90, -45][Math.floor(Math.random() * 4)],
     };
   });

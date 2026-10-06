@@ -4,10 +4,14 @@ export const DEFAULT_PATTERN_LIGHTEN = 0.12;
 export interface GenerationSettings {
   lightness: [number, number];
   contrastWeight: number;
+  patternSpacing: [number, number];
+  patternThickness: [number, number];
 }
 export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   lightness: [0.55, 0.8],
   contrastWeight: 1,
+  patternSpacing: [8, 16],
+  patternThickness: [0.8, 1.4],
 };
 export const PATTERN_TYPES = [
   "lines",
@@ -66,6 +70,24 @@ function number(value: unknown, min: number, max: number): number {
   return value;
 }
 
+function patternRange(
+  value: unknown,
+  fallback: [number, number],
+  min: number,
+  max: number,
+  step: number,
+): [number, number] {
+  if (value === undefined) return [...fallback];
+  if (!Array.isArray(value) || value.length !== 2)
+    throw new Error("Invalid pattern generation range.");
+  const low = number(value[0], min, max);
+  const high = number(value[1], min, max);
+  if (low > high) throw new Error("Pattern minimum must not exceed maximum.");
+  if ([low, high].some((entry) => Math.abs(entry / step - Math.round(entry / step)) > 1e-8))
+    throw new Error("Invalid pattern range increment.");
+  return [low, high];
+}
+
 export function parseData(input: unknown): PaletteData {
   const data = object(input);
   if (data.version !== 1 || !Array.isArray(data.palettes))
@@ -85,7 +107,24 @@ export function parseData(input: unknown): PaletteData {
     const min = number(settings.lightness[0], 0, 1);
     const max = number(settings.lightness[1], 0, 1);
     if (min >= max) throw new Error("Minimum color lightness must be below maximum.");
-    generation = { lightness: [min, max], contrastWeight: number(settings.contrastWeight, 0, 100) };
+    generation = {
+      lightness: [min, max],
+      contrastWeight: number(settings.contrastWeight, 0, 100),
+      patternSpacing: patternRange(
+        settings.patternSpacing,
+        DEFAULT_GENERATION_SETTINGS.patternSpacing,
+        6,
+        24,
+        1,
+      ),
+      patternThickness: patternRange(
+        settings.patternThickness,
+        DEFAULT_GENERATION_SETTINGS.patternThickness,
+        0.5,
+        3,
+        0.1,
+      ),
+    };
   }
   const ids = new Set<string>();
   const names = new Set<string>();

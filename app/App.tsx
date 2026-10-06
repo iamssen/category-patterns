@@ -59,6 +59,18 @@ export function App(props: PageProps & { projectName: string }): Element {
     change({ ...data(), generation: { ...data().generation, lightness } });
     input.value = String(Math.round(lightness[index] * 100));
   }
+  function setPatternRange(
+    key: "patternSpacing" | "patternThickness",
+    index: 0 | 1,
+    input: HTMLInputElement,
+  ): void {
+    const value = input.valueAsNumber;
+    if (!Number.isFinite(value) || !input.validity.valid) return;
+    const range: [number, number] = [...data().generation[key]];
+    range[index] = index === 0 ? Math.min(value, range[1]) : Math.max(value, range[0]);
+    change({ ...data(), generation: { ...data().generation, [key]: range } });
+    input.value = String(range[index]);
+  }
   let worker: Worker | undefined;
 
   function change(next: PaletteData): void {
@@ -168,7 +180,7 @@ export function App(props: PageProps & { projectName: string }): Element {
       const next: Palette = {
         id: existing?.id ?? crypto.randomUUID(),
         name: nextName,
-        categories: randomCategories(colors),
+        categories: randomCategories(colors, data().generation),
       };
       change({
         ...data(),
@@ -202,7 +214,7 @@ export function App(props: PageProps & { projectName: string }): Element {
       const next: Palette = {
         id: crypto.randomUUID(),
         name: nextName,
-        categories: randomCategories(colors),
+        categories: randomCategories(colors, data().generation),
       };
       change({ ...data(), palettes: [...data().palettes, next] });
       select(next);
@@ -310,7 +322,10 @@ export function App(props: PageProps & { projectName: string }): Element {
   function rerollPatterns(): void {
     const item = palette();
     if (!item) return;
-    const categories = randomCategories(item.categories.map((category) => category.color));
+    const categories = randomCategories(
+      item.categories.map((category) => category.color),
+      data().generation,
+    );
     change({
       ...data(),
       palettes: data().palettes.map((value) =>
@@ -335,7 +350,8 @@ export function App(props: PageProps & { projectName: string }): Element {
                 index,
               })
             )[index];
-      const next = mode === "color" ? { ...category, color } : randomCategories([color])[0];
+      const next =
+        mode === "color" ? { ...category, color } : randomCategories([color], data().generation)[0];
       change({
         ...data(),
         palettes: data().palettes.map((value) =>
@@ -781,6 +797,14 @@ export function App(props: PageProps & { projectName: string }): Element {
                 {Math.round(data().generation.lightness[1] * 100)}%
               </span>
               <span>Contrast priority {data().generation.contrastWeight}</span>
+              <span>
+                Spacing {data().generation.patternSpacing[0]}–{data().generation.patternSpacing[1]}
+                px
+              </span>
+              <span>
+                Thickness {data().generation.patternThickness[0]}–
+                {data().generation.patternThickness[1]}px
+              </span>
             </span>
           </summary>
           <table>
@@ -972,6 +996,168 @@ export function App(props: PageProps & { projectName: string }): Element {
                     <small id="contrast-hint">
                       Higher priority favors background visibility over color separation when
                       generating colors. 0 ignores background contrast.
+                    </small>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Pattern spacing</th>
+                <td>
+                  <div class="config-content">
+                    <fieldset
+                      class="generation-setting config-control"
+                      aria-label="Pattern spacing range"
+                      aria-describedby="patternSpacing-hint"
+                      disabled={!loaded() || Boolean(busy())}
+                    >
+                      <div class="lightness-values">
+                        <span>
+                          Min <strong>{data().generation.patternSpacing[0]}px</strong>
+                        </span>
+                        <span>
+                          Max <strong>{data().generation.patternSpacing[1]}px</strong>
+                        </span>
+                      </div>
+                      <div class="lightness-range">
+                        <div class="lightness-track" aria-hidden="true">
+                          <span
+                            style={{
+                              left: `${((data().generation.patternSpacing[0] - 6) / 18) * 100}%`,
+                              right: `${100 - ((data().generation.patternSpacing[1] - 6) / 18) * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <input
+                          aria-label="Minimum pattern spacing"
+                          type="range"
+                          min="6"
+                          max="24"
+                          step="1"
+                          value={data().generation.patternSpacing[0]}
+                          aria-valuemax={data().generation.patternSpacing[1]}
+                          aria-valuetext={`${data().generation.patternSpacing[0]} pixels`}
+                          onInput={(event) =>
+                            setPatternRange("patternSpacing", 0, event.currentTarget)
+                          }
+                        />
+                        <input
+                          aria-label="Maximum pattern spacing"
+                          type="range"
+                          min="6"
+                          max="24"
+                          step="1"
+                          value={data().generation.patternSpacing[1]}
+                          aria-valuemin={data().generation.patternSpacing[0]}
+                          aria-valuetext={`${data().generation.patternSpacing[1]} pixels`}
+                          onInput={(event) =>
+                            setPatternRange("patternSpacing", 1, event.currentTarget)
+                          }
+                        />
+                      </div>
+                      <button
+                        disabled={
+                          data().generation.patternSpacing[0] ===
+                            DEFAULT_GENERATION_SETTINGS.patternSpacing[0] &&
+                          data().generation.patternSpacing[1] ===
+                            DEFAULT_GENERATION_SETTINGS.patternSpacing[1]
+                        }
+                        onClick={() =>
+                          change({
+                            ...data(),
+                            generation: {
+                              ...data().generation,
+                              patternSpacing: DEFAULT_GENERATION_SETTINGS.patternSpacing,
+                            },
+                          })
+                        }
+                      >
+                        Restore 8–16px
+                      </button>
+                    </fieldset>
+                    <small id="patternSpacing-hint">
+                      Range for new or randomized patterns. Equal bounds use a fixed value. Existing
+                      patterns stay unchanged.
+                    </small>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Pattern thickness</th>
+                <td>
+                  <div class="config-content">
+                    <fieldset
+                      class="generation-setting config-control"
+                      aria-label="Pattern thickness range"
+                      aria-describedby="patternThickness-hint"
+                      disabled={!loaded() || Boolean(busy())}
+                    >
+                      <div class="lightness-values">
+                        <span>
+                          Min <strong>{data().generation.patternThickness[0]}px</strong>
+                        </span>
+                        <span>
+                          Max <strong>{data().generation.patternThickness[1]}px</strong>
+                        </span>
+                      </div>
+                      <div class="lightness-range">
+                        <div class="lightness-track" aria-hidden="true">
+                          <span
+                            style={{
+                              left: `${((data().generation.patternThickness[0] - 0.5) / 2.5) * 100}%`,
+                              right: `${100 - ((data().generation.patternThickness[1] - 0.5) / 2.5) * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <input
+                          aria-label="Minimum pattern thickness"
+                          type="range"
+                          min="0.5"
+                          max="3"
+                          step="0.1"
+                          value={data().generation.patternThickness[0]}
+                          aria-valuemax={data().generation.patternThickness[1]}
+                          aria-valuetext={`${data().generation.patternThickness[0]} pixels`}
+                          onInput={(event) =>
+                            setPatternRange("patternThickness", 0, event.currentTarget)
+                          }
+                        />
+                        <input
+                          aria-label="Maximum pattern thickness"
+                          type="range"
+                          min="0.5"
+                          max="3"
+                          step="0.1"
+                          value={data().generation.patternThickness[1]}
+                          aria-valuemin={data().generation.patternThickness[0]}
+                          aria-valuetext={`${data().generation.patternThickness[1]} pixels`}
+                          onInput={(event) =>
+                            setPatternRange("patternThickness", 1, event.currentTarget)
+                          }
+                        />
+                      </div>
+                      <button
+                        disabled={
+                          data().generation.patternThickness[0] ===
+                            DEFAULT_GENERATION_SETTINGS.patternThickness[0] &&
+                          data().generation.patternThickness[1] ===
+                            DEFAULT_GENERATION_SETTINGS.patternThickness[1]
+                        }
+                        onClick={() =>
+                          change({
+                            ...data(),
+                            generation: {
+                              ...data().generation,
+                              patternThickness: DEFAULT_GENERATION_SETTINGS.patternThickness,
+                            },
+                          })
+                        }
+                      >
+                        Restore 0.8–1.4px
+                      </button>
+                    </fieldset>
+                    <small id="patternThickness-hint">
+                      Range for new or randomized patterns. Equal bounds use a fixed value. Existing
+                      patterns stay unchanged.
                     </small>
                   </div>
                 </td>
