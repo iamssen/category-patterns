@@ -72,8 +72,8 @@ original SVG file: image conversion or SVG optimization can remove project metad
 
 **Delete** removes a project after confirmation when there are at least two
 projects, including `default`. The last project is kept.
-In Local App, generated SVGs and their history remain, reserving their output
-folders. Use a different name and output folder for a new project.
+In Local App, deleting a project leaves all output files unchanged. Deleted project
+names and output folders can be reused.
 
 ## Use the SVGs in React
 
@@ -220,14 +220,14 @@ Both outputs also include `colors.json`: `{ "scheme8": ["#000000", "#ffffff"] }`
 Each palette's array contains the original fill background colors in order:
 index 0 is `fill1`, index 1 is `fill2`, etc. Use these colors to derive line colors.
 
-Each Local App project's `{name}.svg-state.json` tracks generated data and output
-paths. The next generation removes previously managed SVGs and `colors.json` from old paths and
-writes the new output. Old paths remain reserved until generation succeeds.
-Unrelated files are preserved; unmanaged output filename conflicts stop generation.
+Local App **Generate SVGs** writes current SVGs and `colors.json` into the configured
+output directories, replacing files with the same names. It does not delete old
+palette files or change previous output directories. Save, project deletion, and
+output directory changes do not modify output files.
 
 On first use, legacy browser data is copied into `default`. If there are no local
 projects, the Local App migrates the root `config.yml`, its JSON data,
-and output history. Original entries and files are preserved. `config.yml` and
+and output directories. Original entries and files are preserved. `config.yml` and
 `data.json` are legacy migration inputs only.
 
 ### Deployment

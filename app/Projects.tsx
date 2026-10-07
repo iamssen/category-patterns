@@ -408,7 +408,8 @@ export function Projects(props: PageProps): Element {
           </p>
           <Show when={connector.appMode}>
             <p>
-              Generated SVGs stay in their output directories. Those directories remain reserved.
+              Files in output directories are left unchanged. You can reuse the project name and
+              output directories.
             </p>
           </Show>
           <Show when={error()}>

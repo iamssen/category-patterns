@@ -27,12 +27,6 @@ import {
 import type { Project, TemplateName } from "./app/projects.ts";
 import { paletteFiles } from "./app/svg.ts";
 
-interface SVGState {
-  version: 1;
-  outputs: string[];
-  data: PaletteData;
-  colors?: true;
-}
 async function readOptional(file: string): Promise<string | undefined> {
   try {
     return await readFile(file, "utf8");
@@ -82,19 +76,6 @@ async function canonicalPath(input: string): Promise<string> {
 function overlaps(a: string, b: string): boolean {
   return a === b || a.startsWith(`${b}${path.sep}`) || b.startsWith(`${a}${path.sep}`);
 }
-async function readState(root: string, name: string): Promise<SVGState | undefined> {
-  const text = await readOptional(path.join(root, `${name}.svg-state.json`));
-  if (text === undefined) return undefined;
-  const value = JSON.parse(text) as SVGState;
-  if (
-    value.version !== 1 ||
-    !Array.isArray(value.outputs) ||
-    value.outputs.some((item) => typeof item !== "string" || !path.isAbsolute(item)) ||
-    (value.colors !== undefined && value.colors !== true)
-  )
-    throw new Error(`Invalid SVG history for ${name}.`);
-  return { version: 1, outputs: value.outputs, data: parseData(value.data), colors: value.colors };
-}
 async function listProjects(root: string): Promise<Project[]> {
   const projects: Project[] = [];
   for (const file of (await readdir(root)).filter((item) => item.endsWith(".yml")).sort()) {
@@ -125,23 +106,10 @@ async function validateOutputs(
     if (outputs.slice(index + 1).some((item) => overlaps(item, outputs[index])))
       throw new Error("Output directories must not overlap.");
   }
-  const orphanNames = (await readdir(root))
-    .filter((file) => file.endsWith(".svg-state.json"))
-    .map((file) => file.slice(0, -".svg-state.json".length))
-    .filter((name) => !projects.some((item) => item.name === name));
-  for (const name of orphanNames) {
-    const history = await readState(root, name);
-    const reserved = await Promise.all((history?.outputs ?? []).map(canonicalPath));
-    if (outputs.some((item) => reserved.some((directory) => overlaps(item, directory))))
-      throw new Error(`An output directory contains SVGs from deleted project ${name}.`);
-  }
   for (const other of projects) {
     if (other.name === project.name) continue;
-    const history = await readState(root, other.name);
     const reserved = await Promise.all(
-      [...other.outputs.map((item) => resolveOutput(root, item)), ...(history?.outputs ?? [])].map(
-        canonicalPath,
-      ),
+      other.outputs.map((item) => canonicalPath(resolveOutput(root, item))),
     );
     if (outputs.some((item) => reserved.some((directory) => overlaps(item, directory))))
       throw new Error(`An output directory is already used by ${other.name}.`);
@@ -159,7 +127,6 @@ export async function initializeProjects(root: string, legacyRoot: string): Prom
   }
   if (projects.length) return;
   let project: Project = { version: 1, name: "default", outputs: [], data: templateData("dark") };
-  let history: SVGState | undefined;
   const configText = await readOptional(path.join(legacyRoot, "config.yml"));
   if (configText !== undefined) {
     const config = parse(configText) as { data?: unknown; outputs?: unknown };
@@ -181,70 +148,29 @@ export async function initializeProjects(root: string, legacyRoot: string): Prom
       outputs,
       data: dataText === undefined ? templateData("dark") : parseData(JSON.parse(dataText)),
     };
-    const stateText = await readOptional(`${dataPath}.svg-state.json`);
-    // Preserve the legacy generation baseline; do not touch original files.
-    history = {
-      version: 1,
-      outputs,
-      data: stateText === undefined ? project.data : parseData(JSON.parse(stateText)),
-    };
   }
-  const resolvedOutputs = await validateOutputs(root, project, projects);
-  if (history) history.outputs = resolvedOutputs;
-  // Write history first so a failed migration can be retried without losing cleanup ownership.
-  if (history)
-    await atomicWrite(path.join(root, "default.svg-state.json"), JSON.stringify(history, null, 2));
+  await validateOutputs(root, project, projects);
   await createFile(path.join(root, "default.yml"), stringify(project));
 }
 
-async function generateSVGs(
-  root: string,
-  project: Project,
-  data: PaletteData,
-  outputs: string[],
-): Promise<void> {
+async function generateSVGs(data: PaletteData, outputs: string[]): Promise<void> {
   if (!outputs.length)
     throw new Error("Add an output directory in Projects before generating SVGs.");
-  const statePath = path.join(root, `${project.name}.svg-state.json`);
-  const previousText = await readOptional(statePath);
-  const previous = await readState(root, project.name);
-  const canonicalRoot = await canonicalPath(root);
-  if (previous?.outputs.some((item) => overlaps(canonicalRoot, item)))
-    throw new Error("Invalid SVG history output directory.");
   const files = new Map(
     outputs.flatMap((directory) =>
       [...paletteFiles(data)].map(([name, svg]) => [path.join(directory, name), svg] as const),
     ),
   );
-  const oldFiles = new Set(
-    (previous?.outputs ?? []).flatMap((directory) =>
-      [...paletteFiles(previous!.data).keys()]
-        .filter((name) => name !== "colors.json" || previous!.colors)
-        .map((name) => path.join(directory, name)),
-    ),
-  );
   const backups = new Map<string, string | undefined>();
-  for (const file of new Set([...oldFiles, ...files.keys()])) {
-    const contents = await readOptional(file);
-    if (contents !== undefined && !oldFiles.has(file))
-      throw new Error(`An unmanaged file already exists: ${file}`);
-    backups.set(file, contents);
-  }
+  for (const file of files.keys()) backups.set(file, await readOptional(file));
   for (const directory of outputs) await mkdir(directory, { recursive: true });
   try {
     for (const [file, contents] of files) await atomicWrite(file, contents);
-    for (const file of oldFiles) if (!files.has(file)) await rm(file, { force: true });
-    await atomicWrite(
-      statePath,
-      JSON.stringify({ version: 1, outputs, data, colors: true }, null, 2),
-    );
   } catch (error) {
     for (const [file, contents] of backups) {
       if (contents === undefined) await rm(file, { force: true });
       else await atomicWrite(file, contents);
     }
-    if (previousText === undefined) await rm(statePath, { force: true });
-    else await atomicWrite(statePath, previousText);
     throw error;
   }
 }
@@ -321,13 +247,7 @@ export function categoryPatternsServer(root: string): Plugin {
             projects = await listProjects(root);
             project = projects.find((item) => item.name === name);
             if (!name && body && typeof body === "object" && "project" in body) {
-              const historyNames = (await readdir(root))
-                .filter((file) => file.endsWith(".svg-state.json"))
-                .map((file) => ({ name: file.slice(0, -".svg-state.json".length) }));
-              const imported = prepareImport((body as { project: unknown }).project, [
-                ...projects,
-                ...historyNames,
-              ]);
+              const imported = prepareImport((body as { project: unknown }).project, projects);
               await createFile(path.join(root, `${imported.name}.yml`), stringify(imported));
               response.end(JSON.stringify(imported));
             } else if (!name) {
@@ -344,8 +264,6 @@ export function categoryPatternsServer(root: string): Plugin {
                 data: templateData(input.template, input.includePalettes !== false),
               });
               checkProjectName(next.name, projects);
-              if (await readState(root, next.name))
-                throw new Error("This name has SVG history. Choose another project name.");
               await validateOutputs(root, next, projects);
               await createFile(path.join(root, `${next.name}.yml`), stringify(next));
               response.end(JSON.stringify(next));
@@ -353,11 +271,10 @@ export function categoryPatternsServer(root: string): Plugin {
               if (!project) throw new Error("Project not found.");
               if (projects.length < 2) throw new Error("Keep at least one project.");
               await rm(path.join(root, `${name}.yml`));
-              // Keep generation history so these output paths remain reserved.
               response.end(JSON.stringify({ deleted: true }));
             } else if (segments.length === 2) {
               const outputs = await validateOutputs(root, project!, projects);
-              await generateSVGs(root, project!, parseData(body), outputs);
+              await generateSVGs(parseData(body), outputs);
               response.end(JSON.stringify({ generated: true }));
             } else {
               const next = parseProject(body);
