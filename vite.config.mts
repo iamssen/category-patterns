@@ -15,36 +15,35 @@ export default defineConfig(async ({ command, mode }) => {
   }
   const appMode = command === "serve" && mode === "app";
   const plugins: PluginOption[] = [solid()];
-  if (mode === "web") {
-    plugins.push(
-      VitePWA({
-        registerType: "prompt",
-        injectRegister: false,
-        includeAssets: ["icon-180.png", "icon-192.png", "icon-512.png"],
-        manifest: {
-          id: "./",
-          name: "Category Patterns",
-          short_name: "Patterns",
-          description: "Generate color palettes and export SVG patterns.",
-          start_url: "./",
-          scope: "./",
-          display: "standalone",
-          theme_color: "#101113",
-          background_color: "#101113",
-          icons: [
-            { src: "icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-            { src: "icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-            { src: "icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-          ],
-        },
-        workbox: {
-          globPatterns: ["**/*.{js,css,html,png}"],
-          cleanupOutdatedCaches: true,
-          clientsClaim: true,
-        },
-      }),
-    );
-  }
+  plugins.push(
+    VitePWA({
+      disable: mode !== "web",
+      registerType: "prompt",
+      injectRegister: false,
+      includeAssets: ["icon-180.png", "icon-192.png", "icon-512.png"],
+      manifest: {
+        id: "./",
+        name: "Category Patterns",
+        short_name: "Patterns",
+        description: "Generate color palettes and export SVG patterns.",
+        start_url: "./",
+        scope: "./",
+        display: "standalone",
+        theme_color: "#101113",
+        background_color: "#101113",
+        icons: [
+          { src: "icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+        ],
+      },
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,png}"],
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+      },
+    }),
+  );
   let projectRoot: string | undefined;
   if (appMode) {
     projectRoot = path.resolve(
