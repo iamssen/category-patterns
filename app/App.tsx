@@ -312,33 +312,41 @@ export function App(props: PageProps & { projectName: string }): Element {
   }
   async function generateColors(request: GenerationRequest): Promise<string[]> {
     try {
-      worker = new Worker(new URL("generation.worker.ts", import.meta.url), {
+      worker ??= new Worker(new URL("generation.worker.ts", import.meta.url), {
         type: "module",
       });
       const staticWorker = worker;
       return await new Promise<string[]>((resolve, reject) => {
-        staticWorker.addEventListener(
-          "message",
-          (event: MessageEvent<{ colors?: string[]; error?: string }>) => {
-            if (event.data.colors) resolve(event.data.colors);
-            else reject(new Error(event.data.error ?? "Failed to generate colors."));
-          },
-          { once: true },
-        );
-        staticWorker.addEventListener(
-          "error",
-          () => reject(new Error("Failed to start the color worker.")),
-          { once: true },
-        );
-        staticWorker.postMessage({
-          ...request,
-          background: data().background,
-          generation: data().generation,
-        });
+        const cleanup = () => {
+          staticWorker.removeEventListener("message", onMessage);
+          staticWorker.removeEventListener("error", onError);
+        };
+        const onMessage = (event: MessageEvent<{ colors?: string[]; error?: string }>) => {
+          cleanup();
+          if (event.data.colors) resolve(event.data.colors);
+          else reject(new Error(event.data.error ?? "Failed to generate colors."));
+        };
+        const onError = () => {
+          cleanup();
+          reject(new Error("The color worker failed."));
+        };
+        staticWorker.addEventListener("message", onMessage);
+        staticWorker.addEventListener("error", onError);
+        try {
+          staticWorker.postMessage({
+            ...request,
+            background: data().background,
+            generation: data().generation,
+          });
+        } catch (error) {
+          cleanup();
+          reject(error);
+        }
       });
-    } finally {
+    } catch (error) {
       worker?.terminate();
       worker = undefined;
+      throw error;
     }
   }
 
