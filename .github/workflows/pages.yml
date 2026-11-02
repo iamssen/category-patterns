@@ -24,7 +24,13 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Install project Rust toolchain
+        run: |
+          rustup toolchain install "$(awk -F '\"' '/^channel/ {print $2}' rust-toolchain.toml)" \
+            --profile minimal --target wasm32-unknown-unknown --component rustfmt --component clippy
       - run: npm ci
+      - run: cargo fmt --manifest-path libs/colors/Cargo.toml -- --check
+      - run: cargo clippy --manifest-path libs/colors/Cargo.toml --target wasm32-unknown-unknown --locked -- -D warnings
       - run: npm run type-check
       - run: npm run lint
       - run: npm run build

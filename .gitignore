@@ -5,3 +5,5 @@ data.json
 *.svg-state.json
 *.tsbuildinfo
 .DS_Store
+libs/colors/target/
+libs/colors/pkg/

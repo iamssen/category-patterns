@@ -9,12 +9,13 @@
     "build": "vite build --mode web",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "lint": "oxlint --deny-warnings app server.ts vite.config.mts",
-    "format": "oxfmt --write app server.ts vite.config.mts package.json tsconfig.json"
+    "lint": "oxlint --deny-warnings app scripts server.ts vite.config.mts",
+    "format": "oxfmt --write app scripts server.ts vite.config.mts package.json tsconfig.json",
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "pretype-check": "npm run build:wasm"
   },
   "dependencies": {
     "@solidjs/web": "2.0.0-rc.0",
-    "category-colors": "3.0.1",
     "jszip": "^3.10.1",
     "solid-js": "2.0.0-rc.0"
   },
@@ -26,9 +27,13 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vite": "8.3.1",
     "vite-plugin-pwa": "^1.3.0",
+    "wasm-pack": "0.15.1",
     "yaml": "^2.9.1"
   },
   "engines": {
     "node": ">=22.12"
+  },
+  "imports": {
+    "#libs/colors": "./libs/colors/pkg/category_patterns_colors.js"
   }
 }

@@ -41,7 +41,8 @@ Run the app locally to generate SVG files directly into folders you choose,
 including multiple output folders. You can update your project's assets without
 extracting a ZIP each time. The Local App runs in your browser with a local server.
 
-Install [Node.js](https://nodejs.org/) 22.12 or later, then run:
+Install [Node.js](https://nodejs.org/) 22.12 or later and
+[rustup](https://rustup.rs/) (`brew install rustup` on macOS), then run:
 
 ```sh
 git clone https://github.com/iamssen/category-patterns.git
@@ -186,12 +187,22 @@ Keep the SVG container at 0×0 rather than `display: none`.
 Single Solid 2 + Vite app. UI source lives in `app/`; the Vite config and local
 server live at the repository root. Both modes use the same SVG generator.
 
+Color generation runs in a Rust/Wasm core (`libs/colors/`) inside the existing
+Web Worker. `rust-toolchain.toml` pins Rust and the Wasm target; wasm-pack is a
+project npm dev dependency. App code imports the core through `#libs/colors`,
+mapped by the root `package.json` imports field. The first build downloads the
+Rust toolchain and binding tools. No global wasm-pack installation is needed. Vite builds Wasm
+before serving/building and rebuilds it when Rust sources change. Type checking
+also prepares the generated bindings. Generated `pkg/` and `target/` stay local;
+commit both npm and Cargo lockfiles. See `libs/colors/NOTICE` for attribution.
+
 ```sh
 npm run dev       # Web mode
 npm run build     # Static Web build in dist/
 npm run preview   # Preview the build
 npm run type-check
 npm run lint
+npm run build:wasm # Build the color core separately
 ```
 
 The Web build supports PWA installation on HTTPS or localhost. PWA caching is

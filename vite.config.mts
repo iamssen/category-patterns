@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { defineConfig } from "vite";
 import type { PluginOption } from "vite";
 import solid from "@solidjs/vite-plugin";
@@ -15,6 +16,25 @@ export default defineConfig(async ({ command, mode }) => {
   }
   const appMode = command === "serve" && mode === "app";
   const plugins: PluginOption[] = [solid()];
+  const buildColors = () => {
+    execFileSync(process.execPath, [path.join(import.meta.dirname, "scripts/build-wasm.mjs")], {
+      stdio: "inherit",
+    });
+  };
+  plugins.push({
+    name: "rust-colors",
+    buildStart: buildColors,
+    handleHotUpdate({ file, server }) {
+      if (
+        file.endsWith("/rust-toolchain.toml") ||
+        /\/libs\/colors\/(src\/.*\.rs|Cargo\.(toml|lock))$/.test(file)
+      ) {
+        buildColors();
+        server.ws.send({ type: "full-reload" });
+        return [];
+      }
+    },
+  });
   plugins.push(
     VitePWA({
       disable: mode !== "web",
@@ -38,7 +58,7 @@ export default defineConfig(async ({ command, mode }) => {
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,png}"],
+        globPatterns: ["**/*.{js,css,html,png,wasm}"],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
       },
@@ -59,7 +79,13 @@ export default defineConfig(async ({ command, mode }) => {
       host: "127.0.0.1",
       port: 5174,
       strictPort: true,
-      watch: { ignored: projectRoot ? [`${projectRoot}/**`] : [] },
+      watch: {
+        ignored: [
+          "**/libs/colors/target/**",
+          "**/libs/colors/pkg/**",
+          ...(projectRoot ? [`${projectRoot}/**`] : []),
+        ],
+      },
     },
     build: { outDir: "dist" },
   };

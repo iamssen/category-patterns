@@ -41,7 +41,8 @@ CSS 배경에 사용할 개별 패턴 SVG가 포함됩니다.
 여러 출력 폴더도 지정할 수 있어, 매번 ZIP을 풀지 않고 프로젝트의 에셋을 갱신할 수 있습니다.
 Local App은 로컬 서버를 실행하고 브라우저에서 사용하는 방식입니다.
 
-[Node.js](https://nodejs.org/) 22.12 이상을 설치한 뒤 실행해 주세요.
+[Node.js](https://nodejs.org/) 22.12 이상과
+[rustup](https://rustup.rs/)(macOS에서는 `brew install rustup`)을 설치한 뒤 실행해 주세요.
 
 ```sh
 git clone https://github.com/iamssen/category-patterns.git
@@ -186,12 +187,22 @@ SVG 컨테이너는 `display: none` 대신 0×0 크기로 유지합니다.
 Solid 2 + Vite 앱입니다. UI 소스는 `app/`에, Vite 설정과 로컬 서버는 저장소 루트에 있습니다.
 두 모드는 같은 SVG 생성기를 사용합니다.
 
+색상 생성은 기존 Web Worker 안의 Rust/Wasm 코어(`libs/colors/`)에서 실행합니다.
+`rust-toolchain.toml`에서 Rust 버전과 Wasm 대상을 고정하고, wasm-pack은 프로젝트의
+npm 개발 의존성으로 관리합니다. 앱에서는 루트 `package.json`의 imports에 정의한
+`#libs/colors`로 코어를 참조합니다. 첫 빌드에서는 Rust 도구 체인과 바인딩 도구를 내려받습니다.
+wasm-pack 전역 설치는 필요하지 않습니다. Vite는 실행·빌드 전에 Wasm을 준비하고
+Rust 소스 변경 시 다시 빌드합니다. 타입 검사도 생성된 바인딩을 먼저 준비합니다.
+생성된 `pkg/`와 `target/`은 커밋하지 않고 npm·Cargo lockfile을 함께 관리합니다.
+원본 코드의 저작권 안내는 `libs/colors/NOTICE`에 있습니다.
+
 ```sh
 npm run dev       # Web 모드
 npm run build     # dist/에 정적 Web 빌드
 npm run preview   # 빌드 미리보기
 npm run type-check
 npm run lint
+npm run build:wasm # 색상 코어만 별도 빌드
 ```
 
 Web 빌드는 HTTPS 또는 localhost에서 PWA 설치를 지원합니다.
