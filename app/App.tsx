@@ -39,6 +39,7 @@ export function App(props: PageProps & { projectName: string }): Element {
   const editorHexInvalid = () => !/^#?(?:[\da-f]{3}|[\da-f]{6})$/i.test(editorHex());
   const [rename, setRename] = createSignal("");
   const [busy, setBusy] = createSignal("");
+  const [generating, setGenerating] = createSignal<"create" | "regenerate">();
   const [loaded, setLoaded] = createSignal(false);
   const [outputsConfigured, setOutputsConfigured] = createSignal(false);
   const missingOutputs = () => connector.appMode && loaded() && !outputsConfigured();
@@ -350,6 +351,7 @@ export function App(props: PageProps & { projectName: string }): Element {
       if (!Number.isSafeInteger(length) || length < 1 || length > 20)
         throw new Error("Color count must be between 1 and 20.");
       setBusy("Generating colors and patterns…");
+      setGenerating(existing ? "regenerate" : "create");
       const colors = await generateColors({ count: length });
       const next: Palette = {
         id: existing?.id ?? crypto.randomUUID(),
@@ -368,6 +370,7 @@ export function App(props: PageProps & { projectName: string }): Element {
       setError(error_ instanceof Error ? error_.message : "Generation failed.");
     } finally {
       setBusy("");
+      setGenerating(undefined);
     }
   }
   function createFromColorCodes(): void {
@@ -626,7 +629,7 @@ export function App(props: PageProps & { projectName: string }): Element {
   }
 
   return (
-    <div class="app" style={theme().style}>
+    <fieldset class="app" style={theme().style} disabled={Boolean(busy())}>
       <aside class="sidebar">
         <header>
           <span class="eyebrow">Visual asset manager</span>
@@ -647,11 +650,7 @@ export function App(props: PageProps & { projectName: string }): Element {
           </div>
           <p>Distinct colors. Subtle patterns.</p>
         </header>
-        <button
-          class="project-switch"
-          disabled={Boolean(busy())}
-          onClick={() => props.navigate("/projects")}
-        >
+        <button class="project-switch" onClick={() => props.navigate("/projects")}>
           <span>
             <small>Project</small>
             <strong>{activeProjectName()}</strong>
@@ -674,7 +673,6 @@ export function App(props: PageProps & { projectName: string }): Element {
                 onInput={(event) => setName(event.currentTarget.value)}
                 maxlength={64}
                 required
-                disabled={Boolean(busy())}
               />
             </label>
             <label>
@@ -687,7 +685,6 @@ export function App(props: PageProps & { projectName: string }): Element {
                 value={count()}
                 onInput={(event) => setCount(event.currentTarget.valueAsNumber)}
                 required
-                disabled={Boolean(busy())}
               />
             </label>
             <div
@@ -700,7 +697,11 @@ export function App(props: PageProps & { projectName: string }): Element {
               }}
             >
               <div class="create-button-group" role="group" aria-label="Create palette">
-                <button type="submit" disabled={!loaded() || Boolean(busy())}>
+                <button
+                  type="submit"
+                  disabled={!loaded()}
+                  aria-busy={generating() === "create" ? "true" : "false"}
+                >
                   ＋ Create palette
                 </button>
                 <button
@@ -709,7 +710,7 @@ export function App(props: PageProps & { projectName: string }): Element {
                   aria-label="Palette creation options"
                   aria-expanded={createOptionsOpen() ? "true" : "false"}
                   aria-controls="palette-creation-options"
-                  disabled={!loaded() || Boolean(busy())}
+                  disabled={!loaded()}
                   onClick={() => setCreateOptionsOpen((open) => !open)}
                 >
                   <span aria-hidden="true">▾</span>
@@ -743,7 +744,6 @@ export function App(props: PageProps & { projectName: string }): Element {
             {(item) => (
               <button
                 class={["palette-button", { active: selected() === item.id }]}
-                disabled={Boolean(busy())}
                 onClick={() => select(item)}
                 aria-pressed={selected() === item.id ? "true" : "false"}
               >
@@ -760,28 +760,22 @@ export function App(props: PageProps & { projectName: string }): Element {
         </nav>
         <footer>
           <div class="history-actions" role="group" aria-label="Edit history">
-            <button
-              disabled={Boolean(busy()) || !past().length}
-              onClick={undo}
-              title="Undo (⌘/Ctrl Z)"
-            >
+            <button disabled={!past().length} onClick={undo} title="Undo (⌘/Ctrl Z)">
               Undo
             </button>
-            <button
-              disabled={Boolean(busy()) || !future().length}
-              onClick={redo}
-              title="Redo (⌘/Ctrl Shift Z)"
-            >
+            <button disabled={!future().length} onClick={redo} title="Redo (⌘/Ctrl Shift Z)">
               Redo
             </button>
-            <span role="status">{busy() || (dirty() ? "Unsaved changes" : "Saved")}</span>
+            <span role="status" title={message() || (dirty() ? "Unsaved changes" : "Saved")}>
+              {message() || (dirty() ? "Unsaved changes" : "Saved")}
+            </span>
           </div>
           <div class="save-actions" role="group" aria-label="Save and export palettes">
-            <button disabled={!loaded() || Boolean(busy()) || !dirty()} onClick={() => void save()}>
+            <button disabled={!loaded() || !dirty()} onClick={() => void save()}>
               Save
             </button>
             <button
-              disabled={!loaded() || Boolean(busy()) || missingOutputs()}
+              disabled={!loaded() || missingOutputs()}
               aria-describedby={missingOutputs() ? "output-directory-warning" : undefined}
               onClick={() => void exportSVGs()}
             >
@@ -791,19 +785,16 @@ export function App(props: PageProps & { projectName: string }): Element {
           <Show when={missingOutputs()}>
             <div class="output-warning" id="output-directory-warning" role="status">
               <small>Add an output directory to generate SVGs.</small>
-              <button disabled={Boolean(busy())} onClick={() => props.navigate("/projects")}>
-                Set output directories
-              </button>
+              <button onClick={() => props.navigate("/projects")}>Set output directories</button>
             </div>
           </Show>
           <details class="project-tools">
             <summary>Project actions</summary>
-            <button disabled={!loaded() || Boolean(busy())} onClick={() => void shareProject()}>
+            <button disabled={!loaded()} onClick={() => void shareProject()}>
               Export project
             </button>
             <Show when={loaded() && connector.appMode && project?.outputs.length}>
               <button
-                disabled={Boolean(busy())}
                 title={project?.outputs.join("\n")}
                 onClick={() => props.navigate("/projects")}
               >
@@ -894,7 +885,6 @@ export function App(props: PageProps & { projectName: string }): Element {
             type="color"
             aria-label="Category color"
             value={editedCategory()?.color ?? "#000000"}
-            disabled={Boolean(busy())}
             onInput={(event) => {
               setEditorHex(event.currentTarget.value.toUpperCase());
               editCategory({ color: event.currentTarget.value.toUpperCase() });
@@ -907,7 +897,6 @@ export function App(props: PageProps & { projectName: string }): Element {
             maxlength={7}
             aria-invalid={editorHexInvalid() ? "true" : "false"}
             aria-describedby={editorHexInvalid() ? "category-hex-error" : undefined}
-            disabled={Boolean(busy())}
             spellcheck={false}
             onInput={(event) => editHex(event.currentTarget.value)}
             onBlur={() => setEditorHex(editedCategory()?.color ?? "")}
@@ -922,16 +911,11 @@ export function App(props: PageProps & { projectName: string }): Element {
           </small>
         </Show>
         <div class="category-order">
-          <button
-            disabled={Boolean(busy()) || editingCategory() === 0}
-            onClick={() => moveCategory(-1)}
-          >
+          <button disabled={editingCategory() === 0} onClick={() => moveCategory(-1)}>
             Move left
           </button>
           <button
-            disabled={
-              Boolean(busy()) || (editingCategory() ?? 0) >= (palette()?.categories.length ?? 0) - 1
-            }
+            disabled={(editingCategory() ?? 0) >= (palette()?.categories.length ?? 0) - 1}
             onClick={() => moveCategory(1)}
           >
             Move right
@@ -950,7 +934,6 @@ export function App(props: PageProps & { projectName: string }): Element {
                   aria-label={PATTERN_LABELS[type]}
                   title={PATTERN_LABELS[type]}
                   aria-pressed={editedCategory()?.pattern === type ? "true" : "false"}
-                  disabled={Boolean(busy())}
                   onClick={() => editCategory({ pattern: type })}
                 >
                   <img src={patternPreviewUrl(type, theme().patternPreview)} alt="" />
@@ -971,7 +954,6 @@ export function App(props: PageProps & { projectName: string }): Element {
                   max="180"
                   step="1"
                   value={editedCategory()?.angle ?? 0}
-                  disabled={Boolean(busy())}
                   onInput={(event) => editPatternNumber("angle", event.currentTarget)}
                   onBlur={(event) => {
                     event.currentTarget.value = String(editedCategory()?.angle ?? 0);
@@ -988,7 +970,6 @@ export function App(props: PageProps & { projectName: string }): Element {
               step="1"
               value={editedCategory()?.angle ?? 0}
               aria-valuetext={`${editedCategory()?.angle ?? 0} degrees`}
-              disabled={Boolean(busy())}
               onInput={(event) => editPatternNumber("angle", event.currentTarget)}
             />
           </div>
@@ -1003,7 +984,6 @@ export function App(props: PageProps & { projectName: string }): Element {
                   max="24"
                   step="1"
                   value={editedCategory()?.size ?? 8}
-                  disabled={Boolean(busy())}
                   onInput={(event) => editPatternNumber("size", event.currentTarget)}
                   onBlur={(event) => {
                     event.currentTarget.value = String(editedCategory()?.size ?? 8);
@@ -1020,7 +1000,6 @@ export function App(props: PageProps & { projectName: string }): Element {
               step="1"
               value={editedCategory()?.size ?? 8}
               aria-valuetext={`${editedCategory()?.size ?? 8} pixels`}
-              disabled={Boolean(busy())}
               onInput={(event) => editPatternNumber("size", event.currentTarget)}
             />
           </div>
@@ -1035,7 +1014,6 @@ export function App(props: PageProps & { projectName: string }): Element {
                   max="3"
                   step="0.1"
                   value={editedCategory()?.strokeWidth ?? 1}
-                  disabled={Boolean(busy())}
                   onInput={(event) => editPatternNumber("strokeWidth", event.currentTarget)}
                   onBlur={(event) => {
                     event.currentTarget.value = String(editedCategory()?.strokeWidth ?? 1);
@@ -1052,32 +1030,23 @@ export function App(props: PageProps & { projectName: string }): Element {
               step="0.1"
               value={editedCategory()?.strokeWidth ?? 1}
               aria-valuetext={`${editedCategory()?.strokeWidth ?? 1} pixels`}
-              disabled={Boolean(busy())}
               onInput={(event) => editPatternNumber("strokeWidth", event.currentTarget)}
             />
           </div>
         </div>
         <div class="category-editor-randomize">
-          <button disabled={Boolean(busy())} onClick={() => void randomizeEditedCategory("color")}>
-            Randomize color
-          </button>
-          <button
-            disabled={Boolean(busy())}
-            onClick={() => void randomizeEditedCategory("pattern")}
-          >
-            Randomize pattern
-          </button>
+          <button onClick={() => void randomizeEditedCategory("color")}>Randomize color</button>
+          <button onClick={() => void randomizeEditedCategory("pattern")}>Randomize pattern</button>
         </div>
         <button
           class="category-editor-randomize-all"
-          disabled={Boolean(busy())}
           onClick={() => void randomizeEditedCategory("both")}
         >
           Randomize color + pattern
         </button>
         <button
           class="category-editor-delete danger"
-          disabled={Boolean(busy()) || (palette()?.categories.length ?? 0) <= 1}
+          disabled={(palette()?.categories.length ?? 0) <= 1}
           title={
             (palette()?.categories.length ?? 0) <= 1
               ? "Keep at least one color"
@@ -1114,11 +1083,6 @@ export function App(props: PageProps & { projectName: string }): Element {
             </Show>
           </div>
         </Show>
-        <Show when={message() || busy()}>
-          <div class="notice" role="status">
-            {busy() || message()}
-          </div>
-        </Show>
         <Show when={loaded() && !data().backgroundConfirmed}>
           <div class="background-notice" role="status">
             <strong>Check your background first</strong>
@@ -1126,10 +1090,7 @@ export function App(props: PageProps & { projectName: string }): Element {
               Is this the background you want to use? Keep it, or choose a color below before
               comparing palettes.
             </p>
-            <button
-              disabled={Boolean(busy())}
-              onClick={() => change({ ...data(), backgroundConfirmed: true })}
-            >
+            <button onClick={() => change({ ...data(), backgroundConfirmed: true })}>
               Yes, use this background
             </button>
           </div>
@@ -1187,7 +1148,7 @@ export function App(props: PageProps & { projectName: string }): Element {
                         max="0.5"
                         step="0.01"
                         value={data().patternLighten}
-                        disabled={!loaded() || Boolean(busy())}
+                        disabled={!loaded()}
                         onInput={(event) =>
                           change(
                             { ...data(), patternLighten: event.currentTarget.valueAsNumber },
@@ -1197,11 +1158,7 @@ export function App(props: PageProps & { projectName: string }): Element {
                       />
                       <button
                         class="setting-restore"
-                        disabled={
-                          !loaded() ||
-                          Boolean(busy()) ||
-                          data().patternLighten === DEFAULT_PATTERN_LIGHTEN
-                        }
+                        disabled={!loaded() || data().patternLighten === DEFAULT_PATTERN_LIGHTEN}
                         onClick={() =>
                           change({ ...data(), patternLighten: DEFAULT_PATTERN_LIGHTEN })
                         }
@@ -1229,13 +1186,11 @@ export function App(props: PageProps & { projectName: string }): Element {
                         aria-describedby="background-hint"
                         type="color"
                         value={data().background}
-                        disabled={!loaded() || Boolean(busy())}
+                        disabled={!loaded()}
                         onInput={(event) => setBackground(event.currentTarget.value)}
                       />
                       <button
-                        disabled={
-                          !loaded() || Boolean(busy()) || data().background === DEFAULT_BACKGROUND
-                        }
+                        disabled={!loaded() || data().background === DEFAULT_BACKGROUND}
                         onClick={() => setBackground(DEFAULT_BACKGROUND)}
                       >
                         Restore {DEFAULT_BACKGROUND}
@@ -1258,7 +1213,7 @@ export function App(props: PageProps & { projectName: string }): Element {
                       class="generation-setting config-control"
                       aria-label="Color lightness"
                       aria-describedby="lightness-hint"
-                      disabled={!loaded() || Boolean(busy())}
+                      disabled={!loaded()}
                     >
                       <div class="lightness-values">
                         <span>
@@ -1345,7 +1300,7 @@ export function App(props: PageProps & { projectName: string }): Element {
                         min="0"
                         max="100"
                         step="1"
-                        disabled={!loaded() || Boolean(busy())}
+                        disabled={!loaded()}
                         value={data().generation.contrastWeight}
                         onInput={(event) =>
                           change(
@@ -1363,7 +1318,6 @@ export function App(props: PageProps & { projectName: string }): Element {
                       <button
                         disabled={
                           !loaded() ||
-                          Boolean(busy()) ||
                           data().generation.contrastWeight ===
                             DEFAULT_GENERATION_SETTINGS.contrastWeight
                         }
@@ -1397,7 +1351,7 @@ export function App(props: PageProps & { projectName: string }): Element {
                       class="generation-setting config-control"
                       aria-label="Pattern spacing range"
                       aria-describedby="patternSpacing-hint"
-                      disabled={!loaded() || Boolean(busy())}
+                      disabled={!loaded()}
                     >
                       <div class="lightness-values">
                         <span>
@@ -1480,7 +1434,7 @@ export function App(props: PageProps & { projectName: string }): Element {
                       class="generation-setting config-control"
                       aria-label="Pattern thickness range"
                       aria-describedby="patternThickness-hint"
-                      disabled={!loaded() || Boolean(busy())}
+                      disabled={!loaded()}
                     >
                       <div class="lightness-values">
                         <span>
@@ -1582,12 +1536,13 @@ export function App(props: PageProps & { projectName: string }): Element {
                     <h2>{current().name}</h2>
                   </div>
                   <div class="actions">
-                    <button disabled={Boolean(busy())} onClick={() => void generate(current())}>
+                    <button
+                      aria-busy={generating() === "regenerate" ? "true" : "false"}
+                      onClick={() => void generate(current())}
+                    >
                       Regenerate colors + patterns
                     </button>
-                    <button disabled={Boolean(busy())} onClick={rerollPatterns}>
-                      Regenerate patterns
-                    </button>
+                    <button onClick={rerollPatterns}>Regenerate patterns</button>
                   </div>
                 </header>
                 <section class="panel">
@@ -1601,7 +1556,6 @@ export function App(props: PageProps & { projectName: string }): Element {
                           <button
                             class="swatch-image"
                             data-category-index={index()}
-                            disabled={Boolean(busy())}
                             aria-label={`Edit color and pattern for Category ${index() + 1}`}
                             title="Edit color and pattern"
                             aria-controls="category-editor"
@@ -1612,7 +1566,6 @@ export function App(props: PageProps & { projectName: string }): Element {
                           </button>
                           <div class="swatch-details">
                             <button
-                              disabled={Boolean(busy())}
                               aria-label={`Edit Category ${index() + 1}`}
                               title="Edit color and pattern"
                               onClick={() => openCategoryEditor(index())}
@@ -1620,7 +1573,6 @@ export function App(props: PageProps & { projectName: string }): Element {
                               <strong>Category {index() + 1}</strong>
                             </button>
                             <button
-                              disabled={Boolean(busy())}
                               aria-label={`Edit color and pattern for Category ${index() + 1}`}
                               title="Edit color and pattern"
                               aria-controls="category-editor"
@@ -1630,7 +1582,6 @@ export function App(props: PageProps & { projectName: string }): Element {
                               <code>{category.color}</code>
                             </button>
                             <button
-                              disabled={Boolean(busy())}
                               aria-label={`Edit pattern for Category ${index() + 1}`}
                               title="Edit pattern"
                               aria-controls="category-editor"
@@ -1647,7 +1598,7 @@ export function App(props: PageProps & { projectName: string }): Element {
                       <button
                         class="swatch-add"
                         aria-label="Add color and pattern"
-                        disabled={Boolean(busy()) || current().categories.length >= 20}
+                        disabled={current().categories.length >= 20}
                         title={
                           current().categories.length >= 20
                             ? "Maximum 20 colors"
@@ -1718,12 +1669,9 @@ export function App(props: PageProps & { projectName: string }): Element {
                       aria-label="New palette name"
                       value={rename()}
                       onInput={(event) => setRename(event.currentTarget.value)}
-                      disabled={Boolean(busy())}
                     />
-                    <button onClick={renamePalette} disabled={Boolean(busy())}>
-                      Rename
-                    </button>
-                    <button class="danger" onClick={remove} disabled={Boolean(busy())}>
+                    <button onClick={renamePalette}>Rename</button>
+                    <button class="danger" onClick={remove}>
                       Delete palette
                     </button>
                   </div>
@@ -1735,6 +1683,6 @@ export function App(props: PageProps & { projectName: string }): Element {
           }}
         </Show>
       </main>
-    </div>
+    </fieldset>
   );
 }

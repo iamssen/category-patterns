@@ -28,14 +28,43 @@ button {
     border-color: var(--accent);
   }
   &:disabled {
-    opacity: 0.45;
     cursor: default;
+  }
+  /* The busy fieldset blocks input without dimming every control. */
+  &[disabled] {
+    opacity: 0.45;
   }
 }
 button:focus-visible,
 input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
+}
+button[aria-busy="true"] {
+  position: relative;
+  color: transparent;
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--muted);
+    border-top-color: var(--text);
+    border-radius: 50%;
+    animation: button-loading 0.7s linear infinite;
+  }
+}
+@keyframes button-loading {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  button[aria-busy="true"]::after {
+    animation: none;
+  }
 }
 input {
   min-width: 0;
@@ -98,6 +127,12 @@ small {
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr);
   min-height: 100dvh;
+}
+fieldset.app {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: 0;
 }
 .sidebar {
   position: sticky;
@@ -714,7 +749,6 @@ main {
       }
     }
     &:disabled {
-      opacity: 0.45;
       &::-webkit-slider-thumb {
         cursor: default;
         pointer-events: none;
@@ -723,6 +757,9 @@ main {
         cursor: default;
         pointer-events: none;
       }
+    }
+    &[disabled] {
+      opacity: 0.45;
     }
   }
 }
